@@ -1,34 +1,31 @@
 /**
- * Detect what AR capabilities the current device/browser supports.
+ * Lightweight AR capability detection for UI display.
+ * The actual AR mode negotiation happens inside useARJSEngine.
  */
 
-export type ARCapability = "webxr" | "ar-quick-look" | "babylon-fallback";
+export type ARCapability = "webxr" | "arjs-markerless" | "fallback-3d";
 
 export function getARCapability(): ARCapability {
-  // Check if we're on iOS
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  if (isIOS) {
-    return "ar-quick-look";
-  }
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/i.test(ua);
 
-  // Check for WebXR support (Android Chrome, etc.)
-  if (typeof navigator.xr !== 'undefined' && navigator.xr !== null) {
+  // Android with WebXR support
+  if (isAndroid && typeof (navigator as any).xr !== "undefined") {
     return "webxr";
   }
 
-  // Fallback to Babylon.js DeviceOrientation AR
-  return "babylon-fallback";
+  // Any device with camera access → AR.js overlay
+  if (typeof navigator.mediaDevices?.getUserMedia === "function") {
+    return "arjs-markerless";
+  }
+
+  return "fallback-3d";
 }
 
 export function isIOS(): boolean {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 }
 
-export function hasWebXR(): boolean {
-  return navigator.xr !== undefined;
-}
-
-export function supportsARQuickLook(): boolean {
-  // iOS 12+ in Safari/WebView can use AR Quick Look
-  return isIOS();
+export function isAndroid(): boolean {
+  return /Android/.test(navigator.userAgent);
 }

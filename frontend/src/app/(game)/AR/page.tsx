@@ -1,24 +1,77 @@
 "use client";
 
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useRef, useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import GlassButton from "@/components/ui/GlassButton";
 import GlassModal from "@/components/ui/GlassModal";
+import { useARJSEngine } from "@/features/ar-renderer/useARJSEngine";
+import { getARCapability } from "@/utils/detectARCapability";
+import { RARITY_COLORS } from "@/types";
+import type { ARGameObject } from "@/types";
 
 export default function ARPage() {
-  const [scanning, setScanning] = useState(true);
-  const [showCapture, setShowCapture] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [arMode, setARMode] = useState<string | null>(null);
+  const [showPickup, setShowPickup] = useState(false);
+  const [lastPickedUp, setLastPickedUp] = useState<ARGameObject | null>(null);
+
+  const {
+    ready,
+    cameraActive,
+    geoAvailable,
+    objects,
+    nearbyObject,
+    error,
+    arSupported,
+    collectObject,
+  } = useARJSEngine(canvasRef, videoRef);
+
+  useEffect(() => {
+    setARMode(getARCapability());
+  }, []);
+
+  const uncollected = objects.filter((o) => !o.collected);
+  const collected = objects.filter((o) => o.collected);
+
+  function handlePickup() {
+    if (!nearbyObject) return;
+    setLastPickedUp(nearbyObject);
+    collectObject(nearbyObject.id);
+    setShowPickup(true);
+  }
+
+  const modeLabel =
+    arMode === "webxr"
+      ? "WebXR AR"
+      : arMode === "arjs-markerless"
+        ? "AR.js"
+        : "3D Fallback";
 
   return (
-    <div className="relative h-[calc(100vh-5rem)] overflow-hidden">
-      {/* Simulated camera feed background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900">
-        {/* Noise texture simulation */}
-        <div className="absolute inset-0 opacity-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIgb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')]" />
-      </div>
+    <div className="relative h-[calc(100vh-5rem)] overflow-hidden bg-black">
+      {/* Camera feed */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        className="absolute inset-0 w-full h-full object-cover z-0"
+      />
 
-      {/* Viewfinder Frame */}
-      <div className="absolute inset-0 flex items-center justify-center p-8">
+      {/* Gradient background when camera is off */}
+      {!cameraActive && (
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900 z-0" />
+      )}
+
+      {/* Three.js canvas */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full z-[1]"
+        style={{ touchAction: "none" }}
+      />
+
+      {/* Viewfinder */}
+      <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none z-10">
         <motion.div
           className="relative w-full aspect-square max-w-[300px]"
           initial={{ opacity: 0, scale: 0.9 }}
@@ -31,8 +84,8 @@ export default function ARPage() {
           <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-amber-400 rounded-bl-lg" />
           <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-amber-400 rounded-br-lg" />
 
-          {/* Scanning animation */}
-          {scanning && (
+          {/* Scanning line */}
+          {ready && !nearbyObject && (
             <motion.div
               className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_10px_rgba(251,191,36,0.5)]"
               animate={{ top: ["10%", "90%", "10%"] }}
@@ -40,7 +93,17 @@ export default function ARPage() {
             />
           )}
 
-          {/* Center crosshair */}
+          {/* Lock-on ring */}
+          {nearbyObject && (
+            <motion.div
+              className="absolute inset-4 border-2 border-green-400 rounded-lg"
+              initial={{ opacity: 0, scale: 1.2 }}
+              animate={{ opacity: [0.4, 1, 0.4], scale: 1 }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+            />
+          )}
+
+          {/* Crosshair */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
             <motion.div
               animate={{ opacity: [0.3, 0.8, 0.3] }}
@@ -62,69 +125,179 @@ export default function ARPage() {
           className="bg-purple-900/70 backdrop-blur-xl border border-purple-500/20 rounded-xl px-4 py-2 flex items-center justify-between"
         >
           <div>
-            <h2 className="text-white font-bold text-sm">AR Viewfinder</h2>
-            <p className="text-purple-400 text-xs">Point camera at surroundings</p>
+            <h2 className="text-white font-bold text-sm">{modeLabel} View</h2>
+            <p className="text-purple-400 text-xs">
+              {!ready
+                ? "Initializing…"
+                : nearbyObject
+                  ? `${nearbyObject.name} nearby!`
+                  : `${uncollected.length} objects nearby`}
+            </p>
           </div>
-          <div className="flex items-center gap-1 text-amber-400 text-xs font-bold">
-            <motion.div
-              className="w-2 h-2 rounded-full bg-amber-400"
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-            />
-            {scanning ? "SCANNING..." : "READY"}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${cameraActive ? "bg-green-400" : "bg-red-400"}`}
+                title={cameraActive ? "Camera on" : "Camera off"}
+              />
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${geoAvailable ? "bg-green-400" : "bg-amber-400"}`}
+                title={geoAvailable ? "GPS on" : "GPS fallback"}
+              />
+            </div>
+            <div className="flex items-center gap-1 text-amber-400 text-xs font-bold">
+              <motion.div
+                className={`w-2 h-2 rounded-full ${arSupported ? "bg-green-400" : "bg-amber-400"}`}
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+              {!ready
+                ? "LOADING…"
+                : nearbyObject
+                  ? "TARGET LOCKED"
+                  : "SCANNING…"}
+            </div>
           </div>
         </motion.div>
       </div>
 
+      {/* Nearby object prompt */}
+      <AnimatePresence>
+        {nearbyObject && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute left-4 right-4 z-20"
+            style={{ bottom: "11rem" }}
+          >
+            <div
+              className={`bg-purple-900/80 backdrop-blur-xl border rounded-xl px-4 py-3 flex items-center gap-3 ${
+                RARITY_COLORS[nearbyObject.rarity]
+                  .split(" ")
+                  .find((c) => c.startsWith("border-")) ??
+                "border-purple-500/20"
+              }`}
+            >
+              <div className="text-2xl">
+                {nearbyObject.type === "potion"
+                  ? "🧪"
+                  : nearbyObject.type === "chest"
+                    ? "📦"
+                    : nearbyObject.type === "scroll"
+                      ? "📜"
+                      : nearbyObject.type === "gem"
+                        ? "💎"
+                        : "🪄"}
+              </div>
+              <div className="flex-1">
+                <p className="text-white text-sm font-bold">
+                  {nearbyObject.name}
+                </p>
+                <p
+                  className={`text-xs ${RARITY_COLORS[nearbyObject.rarity].split(" ")[0]}`}
+                >
+                  {nearbyObject.rarity}
+                </p>
+              </div>
+              <span className="text-green-400 text-xs font-bold animate-pulse">
+                IN RANGE
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error */}
+      {error && (
+        <div className="absolute top-20 left-4 right-4 z-20">
+          <div className="bg-red-900/70 backdrop-blur-xl border border-red-500/30 rounded-xl px-4 py-2 text-red-300 text-xs">
+            {error}
+          </div>
+        </div>
+      )}
+
       {/* Bottom controls */}
       <div className="absolute bottom-0 left-0 right-0 z-20 p-4 pb-6">
         <div className="space-y-3">
-          <div className="bg-purple-900/70 backdrop-blur-xl border border-purple-500/20 rounded-xl px-4 py-3 text-center">
-            <p className="text-purple-300 text-xs mb-1">Magical Energy</p>
+          {/* Progress bar */}
+          <div className="bg-purple-900/70 backdrop-blur-xl border border-purple-500/20 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-purple-300 text-xs">Objects Found</p>
+              <p className="text-amber-400 text-xs font-bold">
+                {collected.length} / {objects.length}
+              </p>
+            </div>
             <div className="w-full h-1.5 bg-purple-800/50 rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
-                animate={{ width: ["60%", "75%", "60%"] }}
-                transition={{ duration: 4, repeat: Infinity }}
+                animate={{
+                  width:
+                    objects.length > 0
+                      ? `${(collected.length / objects.length) * 100}%`
+                      : "0%",
+                }}
+                transition={{ duration: 0.5 }}
               />
             </div>
           </div>
+
           <GlassButton
             variant="primary"
             className="w-full text-lg py-4"
-            onClick={() => setShowCapture(true)}
+            onClick={handlePickup}
+            disabled={!nearbyObject}
           >
-            Cast Spell ✨
+            {nearbyObject
+              ? `Pick Up ${nearbyObject.name}`
+              : "Move closer to an object"}
           </GlassButton>
         </div>
       </div>
 
-      {/* Capture result modal */}
+      {/* Pickup modal */}
       <GlassModal
-        isOpen={showCapture}
-        onClose={() => setShowCapture(false)}
-        title="Spell Cast!"
+        isOpen={showPickup}
+        onClose={() => setShowPickup(false)}
+        title="Item Collected!"
       >
-        <div className="text-center">
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            className="text-6xl mb-4"
-          >
-            🔮
-          </motion.div>
-          <p className="text-purple-300 mb-4">
-            No creatures detected in this area. Keep exploring to find magical
-            signatures!
-          </p>
-          <GlassButton
-            variant="secondary"
-            onClick={() => setShowCapture(false)}
-            className="w-full"
-          >
-            Continue Scanning
-          </GlassButton>
-        </div>
+        {lastPickedUp && (
+          <div className="text-center">
+            <motion.div
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              className="text-6xl mb-4"
+            >
+              {lastPickedUp.type === "potion"
+                ? "🧪"
+                : lastPickedUp.type === "chest"
+                  ? "📦"
+                  : lastPickedUp.type === "scroll"
+                    ? "📜"
+                    : lastPickedUp.type === "gem"
+                      ? "💎"
+                      : "🪄"}
+            </motion.div>
+            <h3 className="text-white text-xl font-bold mb-1">
+              {lastPickedUp.name}
+            </h3>
+            <p
+              className={`text-sm font-medium mb-2 ${RARITY_COLORS[lastPickedUp.rarity].split(" ")[0]}`}
+            >
+              {lastPickedUp.rarity}
+            </p>
+            <p className="text-purple-300 text-sm mb-4">
+              {lastPickedUp.description}
+            </p>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setShowPickup(false)}
+              className="w-full"
+            >
+              Continue Exploring
+            </GlassButton>
+          </div>
+        )}
       </GlassModal>
     </div>
   );

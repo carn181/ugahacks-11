@@ -1,4 +1,21 @@
 export type Rarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary";
+export type ARGameObjectType = "potion" | "chest" | "scroll" | "gem" | "wand";
+
+export interface ARGameObject {
+  id: string;
+  type: ARGameObjectType;
+  name: string;
+  description: string;
+  rarity: Rarity;
+  position: {
+    lat: number;
+    lng: number;
+    altitude: number;
+  };
+  pickupRadius: number;
+  collected: boolean;
+  spriteKey: ARGameObjectType;
+}
 
 export interface Creature {
   id: string;

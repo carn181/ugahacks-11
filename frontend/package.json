@@ -21,10 +21,13 @@
   },
   "homepage": "https://github.com/carn181/ugahacks-11#readme",
   "dependencies": {
+    "@ar-js-org/ar.js": "^3.4.7",
+    "@types/three": "^0.182.0",
     "framer-motion": "^12.33.0",
     "next": "^16.1.6",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "three": "^0.182.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",

@@ -13,7 +13,7 @@ interface ARModeSelectorProps {
  * Children can then render appropriate UI based on the AR mode.
  */
 export function ARModeSelector({ children }: ARModeSelectorProps) {
-  const [arMode, setARMode] = useState<ARCapability | null>(null);
+  const [arMode, setARMode] = useState<ARCapability>("arjs-markerless");
 
   useEffect(() => {
     const mode = getARCapability();
@@ -37,7 +37,7 @@ export function ARModeSelector({ children }: ARModeSelectorProps) {
  * Export context hook for children to access AR mode
  */
 export function useARMode(): ARCapability {
-  const [arMode, setARMode] = useState<ARCapability>("babylon-fallback");
+  const [arMode, setARMode] = useState<ARCapability>("arjs-markerless");
 
   useEffect(() => {
     setARMode(getARCapability());

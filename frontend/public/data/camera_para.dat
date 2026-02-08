@@ -1,0 +1,6 @@
+# AR.js Camera Parameters
+# This file provides default camera calibration data for AR.js
+# You can replace this with your own camera parameters for better accuracy
+
+# Default camera parameters for mobile devices
+camera_para.dat
