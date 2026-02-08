@@ -1,8 +1,9 @@
 from databases import Database
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import MetaData, create_engine
+
 from app.core.config import settings
 
-DATABASE_URL = settings.database_url
+DATABASE_URL = settings.database_url.replace("postgres://", "postgresql://", 1)
 
 database = Database(DATABASE_URL)
 metadata = MetaData()
