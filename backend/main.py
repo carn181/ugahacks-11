@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
 
-from app.routers import players, items, battles, maps, auth
+from app.routers import players, items, battles, maps, auth, institution
 from app.database import database
 
 
@@ -34,6 +34,7 @@ app.include_router(items.router, prefix="/api", tags=["items"])
 app.include_router(battles.router, prefix="/api", tags=["battles"])
 app.include_router(maps.router, prefix="/api", tags=["maps"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(institution.router, prefix="/api/institution", tags=["institution"])
 
 
 @app.get("/")

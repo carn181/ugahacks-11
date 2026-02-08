@@ -1,1 +1,1 @@
-from . import auth, battles, items, maps, players
+from . import auth, battles, items, maps, players, institution

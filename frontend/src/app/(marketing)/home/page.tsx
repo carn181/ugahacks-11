@@ -108,14 +108,16 @@ export default function HomePage() {
             Begin Your Quest
           </GlassButton>
         </Link>
-        <GlassButton 
-          variant="ghost" 
-          className="w-full"
-          onClick={handleGuestLogin}
-          disabled={isLoading}
-        >
-          {isLoading ? "Loading..." : "Continue as Guest"}
-        </GlassButton>
+        <Link href="/game" className="block">
+          <GlassButton variant="ghost" className="w-full">
+            Continue as Guest
+          </GlassButton>
+        </Link>
+        <Link href="/institution/login" className="block">
+          <GlassButton variant="secondary" className="w-full">
+            🏛️ Institution Portal
+          </GlassButton>
+        </Link>
       </motion.div>
     </div>
     </div>

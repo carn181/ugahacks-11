@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, ReactNode } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/services/authService";
+import { useInstitution } from "@/services/institutionService";
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -16,9 +17,10 @@ const AuthProviderContext = createContext<{
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const { initialized } = useAuth();
+  const { initialized: institutionInitialized } = useInstitution();
 
   // Show loading screen while auth is initializing
-  if (!initialized) {
+  if (!initialized || !institutionInitialized) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900 flex items-center justify-center">
         <div className="text-center">

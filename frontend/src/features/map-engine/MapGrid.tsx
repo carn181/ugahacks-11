@@ -12,10 +12,14 @@ export default function MapGrid({
   items,
   playerPos,
   onItemClick,
+  onMapClick,
+  institutionMode = false,
 }: {
   items: Item[];
   playerPos: { lat: number; lng: number } | null;
   onItemClick?: (item: Item) => void;
+  onMapClick?: (lat: number, lng: number) => void;
+  institutionMode?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -23,9 +27,11 @@ export default function MapGrid({
   const playerMarkerRef = useRef<any>(null);
   const playerAnimRef = useRef<number | null>(null);
   const onItemClickRef = useRef(onItemClick);
+  const onMapClickRef = useRef(onMapClick);
   useEffect(() => {
     onItemClickRef.current = onItemClick;
-  }, [onItemClick]);
+    onMapClickRef.current = onMapClick;
+  }, [onItemClick, onMapClick]);
 
   // Map init
   useEffect(() => {
@@ -49,6 +55,18 @@ export default function MapGrid({
 
         mapInstanceRef.current = map;
         itemLayerRef.current = L.layerGroup().addTo(map);
+
+        // Add click handler for institution mode
+        if (onMapClickRef.current) {
+          map.on('click', (e: any) => {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            onMapClickRef.current?.(lat, lng);
+          });
+          
+          // Change cursor to indicate clickable map
+          map.getContainer().style.cursor = 'crosshair';
+        }
       } catch (e) {
         console.warn("Leaflet failed to initialize", e);
       }

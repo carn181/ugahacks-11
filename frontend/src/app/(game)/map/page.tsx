@@ -95,11 +95,11 @@ export default function MapPage() {
                 ? "Loading…"
                 : error
                   ? "⚠ " + error
-                  : () => {
+                  : (() => {
                       const expiredCount = items.filter(item => getItemExpirationStatus(item).isExpired).length;
                       const activeCount = items.length - expiredCount;
                       return `${activeCount} active${expiredCount > 0 ? ` (${expiredCount} expired)` : ''} items nearby`;
-                    }()}
+                    })()}
             </p>
           </div>
           <div className="flex items-center gap-1 text-amber-400 text-xs font-bold">
