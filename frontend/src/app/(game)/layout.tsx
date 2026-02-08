@@ -6,10 +6,11 @@ import { motion } from "framer-motion";
 
 const navItems = [
   { href: "/game", label: "Home", icon: "🏠" },
+  { href: "/stats", label: "Stats", icon: "📊" },
   { href: "/map", label: "Map", icon: "🗺️" },
-  { href: "/AR", label: "AR", icon: "📸" },
+  { href: "/AR-backend", label: "AR", icon: "📸" },
   { href: "/CV", label: "CV", icon: "🔬" },
-  { href: "/inventory", label: "Items", icon: "🎒" },
+  { href: "/inventory-backend", label: "Items", icon: "🎒" },
 ];
 
 export default function GameLayout({

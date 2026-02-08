@@ -3,24 +3,42 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import "leaflet/dist/leaflet.css";
+import type { Item } from "@/services/api";
 
-type Powerup = { id: number; name: string; lat: number; lng: number; building: string };
-type Player = { id: string; lat: number; lng: number };
+const ITEM_EMOJI: Record<string, string> = {
+  Potion: "🧪",
+  Gem: "💎",
+  Chest: "📦",
+  Wand: "🪄",
+  Scroll: "📜",
+};
+
+const ITEM_COLOR: Record<string, string> = {
+  Potion: "#ef4444",
+  Gem: "#a855f7",
+  Chest: "#f59e0b",
+  Wand: "#fbbf24",
+  Scroll: "#6366f1",
+};
 
 export default function MapGrid({
-  powerups,
+  items,
   playerPos,
-  otherPlayers,
+  onItemClick,
 }: {
-  powerups: Powerup[];
+  items: Item[];
   playerPos: { lat: number; lng: number } | null;
-  otherPlayers: Player[];
+  onItemClick?: (item: Item) => void;
 }) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
-  const layersRef = useRef<{ powerups: any; players: any } | null>(null);
+  const itemLayerRef = useRef<any>(null);
   const playerMarkerRef = useRef<any>(null);
   const playerAnimRef = useRef<number | null>(null);
+  const onItemClickRef = useRef(onItemClick);
+  useEffect(() => {
+    onItemClickRef.current = onItemClick;
+  }, [onItemClick]);
 
   // Map init
   useEffect(() => {
@@ -32,18 +50,18 @@ export default function MapGrid({
         if (!mounted || !mapRef.current) return;
 
         const map = L.map(mapRef.current, {
-          center: [33.946, -83.373],
-          zoom: 15,
+          center: [33.951, -83.3753],
+          zoom: 16,
           zoomControl: true,
         });
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
-          attribution: '&copy; OpenStreetMap contributors',
+          attribution: "&copy; OpenStreetMap contributors",
         }).addTo(map);
 
         mapInstanceRef.current = map;
-        layersRef.current = { powerups: L.layerGroup().addTo(map), players: L.layerGroup().addTo(map) };
+        itemLayerRef.current = L.layerGroup().addTo(map);
       } catch (e) {
         console.warn("Leaflet failed to initialize", e);
       }
@@ -51,112 +69,95 @@ export default function MapGrid({
 
     return () => {
       mounted = false;
-      const m = mapInstanceRef.current;
-      if (m) try { m.remove(); } catch {}
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove();
+        } catch {}
+      }
     };
   }, []);
 
-  // Update markers when data changes
+  // Update item markers when items change
   useEffect(() => {
     const map = mapInstanceRef.current;
-    const layers = layersRef.current;
-    if (!map || !layers) return;
+    const layer = itemLayerRef.current;
+    if (!map || !layer) return;
 
-    const L = (require("leaflet") as any);
+    const L = require("leaflet") as any;
+    layer.clearLayers();
 
-    // Only add powerup markers once (preserve initial placements)
-    try {
-      const existing = layers.powerups.getLayers();
-      if (!existing || existing.length === 0) {
-        const POWERUP_ICONS: Record<string, string> = {
-          "Fire Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022341.png",
-          "Ice Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022342.png",
-          "Speed Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022343.png",
-          "Health Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022344.png",
-          "Shield Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022345.png",
-          "Mana Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022341.png",
-          "Lightning Potion": "https://cdn-icons-png.flaticon.com/512/3022/3022343.png",
-        };
+    items.forEach((item) => {
+      const coords = item.location?.coordinates;
+      if (!coords || coords.length < 2) return;
+      // GeoJSON is [longitude, latitude]
+      const lng = coords[0];
+      const lat = coords[1];
+      const emoji = ITEM_EMOJI[item.type] || "📦";
+      const color = ITEM_COLOR[item.type] || "#8b5cf6";
 
-        powerups.forEach(p => {
-          try {
-            // Use a divIcon to reuse the magical-signature styling (CreatureMarker-like)
-            const emojiMap: Record<string, string> = {
-              "Health Potion": "❤️",
-              "Attack Potion": "⚔️",
-              "Gems": "💎",
-              "Chest": "🧰",
-              "Wand": "🪄",
-              "Scroll": "📜",
-            };
+      const html = `
+        <div style="display:flex;align-items:center;justify-content:center;position:relative;">
+          <div style="
+            width:40px;height:40px;border-radius:50%;
+            background:rgba(30,10,60,0.85);
+            border:2px solid ${color};
+            display:flex;align-items:center;justify-content:center;
+            font-size:20px;
+            box-shadow:0 0 10px ${color}88;
+          ">${emoji}</div>
+        </div>
+      `;
 
-            const html = `
-              <div class="relative inline-flex items-center justify-center">
-                <div class="absolute -inset-2 rounded-full border-purple-400 border opacity-30" style="width:44px;height:44px;"></div>
-                <div class="w-10 h-10 rounded-full border-2 border-purple-400 bg-purple-900/80 backdrop-blur-sm flex items-center justify-center text-lg text-white">${emojiMap[p.name] || "🧪"}</div>
-              </div>
-            `;
+      const icon = L.divIcon({
+        html,
+        className: "",
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+      });
 
-            const icon = L.divIcon({
-              html,
-              className: "",
-              iconSize: [44, 44],
-              iconAnchor: [22, 22],
-            });
-            const marker = L.marker([p.lat, p.lng], { icon, title: p.name });
-            marker.bindPopup(`<strong>${p.name}</strong><br/>${p.building}`);
-            marker.addTo(layers.powerups);
-          } catch (e) {
-            console.warn("failed to add powerup marker", e);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn("error adding powerups", e);
-    }
-
-    // Update player marker immediately and animate smoothly
-    if (playerPos) {
-      try {
-        if (!playerMarkerRef.current) {
-          playerMarkerRef.current = L.circleMarker([playerPos.lat, playerPos.lng], { radius: 8, color: "#10b981", fillColor: "#10b981", fillOpacity: 1 });
-          playerMarkerRef.current.bindPopup("You");
-          playerMarkerRef.current.addTo(layers.players);
-        } else {
-          // animate from previous to new
-          const start = playerMarkerRef.current.getLatLng();
-          const end = L.latLng(playerPos.lat, playerPos.lng);
-          const duration = 600; // shorter, feel more immediate
-          const startTime = performance.now();
-          if (playerAnimRef.current) cancelAnimationFrame(playerAnimRef.current);
-          const step = (now: number) => {
-            const t = Math.min(1, (now - startTime) / duration);
-            const lat = start.lat + (end.lat - start.lat) * t;
-            const lng = start.lng + (end.lng - start.lng) * t;
-            playerMarkerRef.current.setLatLng([lat, lng]);
-            if (t < 1) {
-              playerAnimRef.current = requestAnimationFrame(step);
-            } else {
-              playerAnimRef.current = null;
-            }
-          };
-          playerAnimRef.current = requestAnimationFrame(step);
-        }
-      } catch (e) {
-        console.warn("failed to update player marker", e);
-      }
-    }
-
-    // Other players: simple refresh (could be animated later)
-    layers.players.clearLayers();
-    if (playerMarkerRef.current) playerMarkerRef.current.addTo(layers.players);
-    otherPlayers.forEach(p => {
-      const m = L.circleMarker([p.lat, p.lng], { radius: 6, color: "#ef4444", fillColor: "#ef4444", fillOpacity: 1 });
-      m.addTo(layers.players);
+      const marker = L.marker([lat, lng], { icon, title: item.subtype });
+      marker.bindPopup(
+        `<strong>${emoji} ${item.subtype}</strong><br/>${item.type}`,
+      );
+      marker.on("click", () => onItemClickRef.current?.(item));
+      marker.addTo(layer);
     });
-  }, [powerups, playerPos, otherPlayers]);
+  }, [items]);
 
-  // cleanup animation frames on unmount
+  // Update player marker
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !playerPos) return;
+
+    const L = require("leaflet") as any;
+
+    if (!playerMarkerRef.current) {
+      playerMarkerRef.current = L.circleMarker([playerPos.lat, playerPos.lng], {
+        radius: 8,
+        color: "#10b981",
+        fillColor: "#10b981",
+        fillOpacity: 1,
+      });
+      playerMarkerRef.current.bindPopup("You");
+      playerMarkerRef.current.addTo(map);
+    } else {
+      const start = playerMarkerRef.current.getLatLng();
+      const end = L.latLng(playerPos.lat, playerPos.lng);
+      const duration = 600;
+      const startTime = performance.now();
+      if (playerAnimRef.current) cancelAnimationFrame(playerAnimRef.current);
+      const step = (now: number) => {
+        const t = Math.min(1, (now - startTime) / duration);
+        const lat = start.lat + (end.lat - start.lat) * t;
+        const lng = start.lng + (end.lng - start.lng) * t;
+        playerMarkerRef.current.setLatLng([lat, lng]);
+        if (t < 1) playerAnimRef.current = requestAnimationFrame(step);
+        else playerAnimRef.current = null;
+      };
+      playerAnimRef.current = requestAnimationFrame(step);
+    }
+  }, [playerPos]);
+
   useEffect(() => {
     return () => {
       if (playerAnimRef.current) cancelAnimationFrame(playerAnimRef.current);

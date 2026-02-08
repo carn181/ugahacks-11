@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: wizard_db
+    environment:
+      POSTGRES_USER: wizard_user
+      POSTGRES_PASSWORD: your_password
+      POSTGRES_DB: wizard_go
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wizard_user -d wizard_go -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - wizard_db_data:/var/lib/postgresql/data
+      - ./backend/db-init:/docker-entrypoint-initdb.d
+
+  db-seeder:
+    image: postgis/postgis:15-3.3
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      POSTGRES_USER: wizard_user
+      POSTGRES_PASSWORD: your_password
+      POSTGRES_DB: wizard_go
+      PGPASSWORD: your_password
+    volumes:
+      - ./backend/mock_data.sql:/seed.sql:ro
+    command: >
+      bash -lc "
+      until pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h db; do sleep 1; done &&
+      psql -U $$POSTGRES_USER -d $$POSTGRES_DB -h db -f /seed.sql
+      "
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      network: host
+    container_name: wizard_backend
+    depends_on:
+      db:
+        condition: service_healthy
+      db-seeder:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: "postgresql://wizard_user:your_password@db:5432/wizard_go"
+      MAX_COLLECTION_DISTANCE_METERS: "10"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      network: host
+    container_name: wizard_frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: "http://backend:8000"
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  wizard_db_data:

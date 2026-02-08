@@ -90,3 +90,38 @@ bower_components/
 
 ## Misc
 *.tgz
+
+## Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+venv/
+.env/
+.venv/
+pip-wheel-metadata/
+pip-log.txt
+
+# Python packaging/build
+build/
+dist/
+*.egg-info/
+.eggs/
+.MANIFEST
+.python-version
+
+# Test/coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# MyPy, Pylint caches
+.mypy_cache/
+.pyre/
+.pytype/
+.pylint.d/
