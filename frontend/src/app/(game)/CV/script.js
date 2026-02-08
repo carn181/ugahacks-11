@@ -1,11 +1,10 @@
 /**
- * CV: Hand detection (open hand = ready to cast, particles only when open),
- * wand detection (Expo marker in ROI to reduce background), move recording (L,R,U,P),
- * pattern matching, spell/penalty callbacks, attack/defense/reflect effects.
- * Open palm = confirmation (input enabled); wand = directional input only.
+ * CV: Hand detection (open hand = aura particles),
+ * single-finger swipe gestures for spells, spell/penalty callbacks,
+ * and attack/defense/reflect effects.
  */
 
-import { MoveBuffer, matchSpell, evaluateMove, SPELL_PATTERNS } from "./gameState.js";
+import { SPELL_PATTERNS } from "./gameState.js";
 
 function getHandCenterAndRadius(landmarks, width, height) {
   const xs = landmarks.map((l) => l.x * width);
@@ -76,149 +75,59 @@ function drawParticlesAroundHand(ctx, cx, cy, radius, time) {
 
 // Wand detection: ROI around hand, color mask (Expo marker), morph to reduce grain
 const WAND_HISTORY_LEN = 30;
-/** Dead zone: movement below this (in both axes) = no direction (ignore). */
-const MIN_MOVE_PX = 40;
-/** Minimum displacement on the dominant axis to register L/R/U/D (reduces accidental Down). */
-const MIN_DIRECTION_PX = 60;
-/** Hold time at edge to confirm input (ms). */
-const HOLD_MS = 1000;
-/** Region sensitivity (percent of frame). */
-const EDGE_MARGIN = 0.2;
-/** Max drift during hold (px). */
-const HOLD_STABILITY_PX = 28;
-/** Max contour area for wand (reject large blobs like hands). */
-const WAND_MAX_AREA = 2500;
-/** Min contour area for wand. */
-const WAND_MIN_AREA = 80;
-/** Minimum aspect ratio for a skinny wand-like shape. */
-const WAND_MIN_ASPECT = 2.2;
-/** Ignore detections too close to frame edges (percent). */
-const WAND_EDGE_REJECT = 0.05;
+/** Trace settings (very lenient to accept noisy swipes). */
+const TRACE_MAX_POINTS = 64;
+const TRACE_MIN_DIST = 5;
+const TRACE_IDLE_MS = 200;
+const TRACE_MIN_LEN = 45;
+const TRACE_TOO_FAST_PX_PER_S = 1800;
+const TRACE_SMOOTHING = 0.4;
+const POINTER_LOST_GRACE_MS = 300;
 
-/**
- * Quantize displacement to L, R, U, D. Returns null if in dead zone or movement too small.
- * Larger margin of error so small hand drift doesn't register as Down.
- */
-function displacementToDirection(dx, dy) {
-  const ax = Math.abs(dx);
-  const ay = Math.abs(dy);
-  if (ax < MIN_MOVE_PX && ay < MIN_MOVE_PX) return null;
-  if (ax >= ay) {
-    if (ax < MIN_DIRECTION_PX) return null;
-    return dx > 0 ? "L" : "R";
+function traceLength(points) {
+  let len = 0;
+  for (let i = 1; i < points.length; i++) {
+    len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
   }
-  if (ay < MIN_DIRECTION_PX) return null;
-  return dy > 0 ? "D" : "U";
+  return len;
 }
 
-function getEdgeDirection(x, y, width, height) {
-  const leftEdge = width * EDGE_MARGIN;
-  const rightEdge = width * (1 - EDGE_MARGIN);
-  const topEdge = height * EDGE_MARGIN;
-  const bottomEdge = height * (1 - EDGE_MARGIN);
-  if (x <= leftEdge && y > topEdge && y < bottomEdge) return "L";
-  if (x >= rightEdge && y > topEdge && y < bottomEdge) return "R";
-  if (y <= topEdge && x > leftEdge && x < rightEdge) return "U";
-  if (y >= bottomEdge && x > leftEdge && x < rightEdge) return "D";
+function detectSwipeGesture(points) {
+  if (points.length < 6) return null;
+  const len = traceLength(points);
+  if (len < TRACE_MIN_LEN) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const w = maxX - minX;
+  const h = maxY - minY;
+  const diag = Math.hypot(w, h);
+  if (diag < 30) return null;
+
+  // Circle (reflect): loose loop with similar width/height and a near-closed path
+  const start = points[0];
+  const end = points[points.length - 1];
+  const closeDist = Math.hypot(end.x - start.x, end.y - start.y);
+  const ratio = w / Math.max(1, h);
+  const isCircle =
+    len > diag * 2.0 &&
+    closeDist < diag * 0.6 &&
+    ratio > 0.5 &&
+    ratio < 2.2;
+  if (isCircle) return "reflect";
+
+  // Horizontal swipe (attack): very lenient on backtracking
+  if (w > h * 1.15 && w > 40) return "attack";
+  // Vertical swipe (defense)
+  if (h > w * 1.15 && h > 40) return "defense";
+
   return null;
 }
 
-function getRegionDirection(x, y, width, height) {
-  const leftEdge = width * EDGE_MARGIN;
-  const rightEdge = width * (1 - EDGE_MARGIN);
-  const topEdge = height * EDGE_MARGIN;
-  const bottomEdge = height * (1 - EDGE_MARGIN);
-  if (x <= leftEdge) return "L";
-  if (x >= rightEdge) return "R";
-  if (y <= topEdge) return "U";
-  if (y >= bottomEdge) return "D";
-  return null;
-}
-
-/**
- * Detect wand (Expo marker) by color in frame; only accept if near an open hand (ROI logic).
- * Uses full-frame HSV mask + morph to reduce grain, then filters by distance to hand.
- */
-function detectWandInROI(cv, srcMat, handX, handY, handRadius) {
-  try {
-    const h = srcMat.rows;
-    const w = srcMat.cols;
-    const rgb = new cv.Mat(h, w, cv.CV_8UC3);
-    const hsv = new cv.Mat();
-    cv.cvtColor(srcMat, rgb, cv.COLOR_RGBA2RGB);
-    cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
-    const mask = new cv.Mat();
-    const low = new cv.Mat(1, 3, cv.CV_8UC1);
-    const high = new cv.Mat(1, 3, cv.CV_8UC1);
-    low.data.set([0, 60, 60]);
-    high.data.set([40, 255, 255]);
-    cv.inRange(hsv, low, high, mask);
-    const low2 = new cv.Mat(1, 3, cv.CV_8UC1);
-    const high2 = new cv.Mat(1, 3, cv.CV_8UC1);
-    low2.data.set([160, 80, 80]);
-    high2.data.set([180, 255, 255]);
-    const mask2 = new cv.Mat();
-    cv.inRange(hsv, low2, high2, mask2);
-    cv.bitwise_or(mask, mask2, mask);
-    const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
-    cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
-    cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
-    const contours = new cv.MatVector();
-    const hierarchy = new cv.Mat();
-    cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    rgb.delete();
-    hsv.delete();
-    mask.delete();
-    mask2.delete();
-    low.delete();
-    high.delete();
-    low2.delete();
-    high2.delete();
-    kernel.delete();
-    let best = null;
-    let bestScore = 0;
-    for (let i = 0; i < contours.size(); i++) {
-      const cnt = contours.get(i);
-      const area = cv.contourArea(cnt);
-      if (area < WAND_MIN_AREA || area > WAND_MAX_AREA) {
-        cnt.delete();
-        continue;
-      }
-      const rect = cv.boundingRect(cnt);
-      const ratio = Math.max(rect.width, rect.height) / Math.max(1, Math.min(rect.width, rect.height));
-      if (ratio < WAND_MIN_ASPECT) {
-        cnt.delete();
-        continue;
-      }
-      const m = cv.moments(cnt);
-      if (m.m00 > 0) {
-        const score = area * ratio;
-        if (score > bestScore) {
-          const cx = m.m10 / m.m00;
-          const cy = m.m01 / m.m00;
-          if (
-            cx > w * WAND_EDGE_REJECT &&
-            cx < w * (1 - WAND_EDGE_REJECT) &&
-            cy > h * WAND_EDGE_REJECT &&
-            cy < h * (1 - WAND_EDGE_REJECT)
-          ) {
-            bestScore = score;
-            best = { x: cx, y: cy };
-          }
-        }
-      }
-      cnt.delete();
-    }
-    contours.delete();
-    hierarchy.delete();
-    if (!best) return null;
-    const dist = Math.hypot(best.x - handX, best.y - handY);
-    if (dist > handRadius * 3) return null;
-    return best;
-  } catch (_) {
-    return null;
-  }
-}
 
 /** Attack (fireball) animation state */
 let fireballEndTime = 0;
@@ -307,17 +216,16 @@ function drawReflect(ctx, time, width, height) {
 }
 
 /**
- * Initialize hand + wand detection, move recording, and spell/penalty callbacks.
+ * Initialize hand + face tracking with swipe gestures and spell/penalty callbacks.
  * @param {HTMLVideoElement} video
  * @param {HTMLCanvasElement} canvas
  * @param {{
- *   cv?: object;
  *   onSpellCast?: (spell: { id: string, name: string }) => void;
- *   onPenalty?: (reason: 'wrong_pattern'|'not_in_arsenal') => void;
+ *   onPenalty?: (reason: 'wrong_pattern'|'not_in_arsenal'|'too_fast') => void;
  *   getPlayerArsenal?: () => Set<string>;
  *   hatImageUrl?: string;
  * }} options
- * @returns {{ cleanup: () => void; getMoveBuffer: () => MoveBuffer; clearMoveBuffer: () => void; setPlayerArsenal: (s: Set<string>) => void }}
+ * @returns {{ cleanup: () => void; setPlayerArsenal: (s: Set<string>) => void }}
  */
 export function initHandDetection(video, canvas, options = {}) {
   const Hands = typeof window !== "undefined" ? window.Hands : null;
@@ -328,31 +236,23 @@ export function initHandDetection(video, canvas, options = {}) {
   }
 
   const ctx = canvas.getContext("2d");
-  const cv = options.cv || (typeof window !== "undefined" ? window.cv : null);
   const w = canvas.width;
   const h = canvas.height;
   let startTime = Date.now();
-  let srcMat = null;
 
-  const moveBuffer = new MoveBuffer();
   let playerArsenal = new Set(["attack", "defense", "reflect"]);
   const wandHistory = [];
   let lastWandPos = null;
   let lastOpenHand = null;
-  let lastDirection = null;
-  let holdDirection = null;
-  let holdStart = 0;
-  let holdPos = null;
-  let lastEvalTime = 0;
+  const trace = [];
+  let lastTraceTime = 0;
+  let lastTooFastTime = 0;
+  let lastCastTime = 0;
+  let lastPointerTime = 0;
   let faceLandmarks = null;
   let hatImg = null;
   let hatReady = false;
 
-  if (cv) {
-    try {
-      srcMat = new cv.Mat(h, w, cv.CV_8UC4);
-    } catch (_) {}
-  }
 
   const hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
@@ -360,7 +260,7 @@ export function initHandDetection(video, canvas, options = {}) {
 
   hands.setOptions({
     maxNumHands: 4,
-    modelComplexity: 1,
+    modelComplexity: 0,
     minDetectionConfidence: 0.7,
     minTrackingConfidence: 0.5,
   });
@@ -400,32 +300,22 @@ export function initHandDetection(video, canvas, options = {}) {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(video, 0, 0, w, h);
 
-    // Target zones (bold semi-circular purple + gold)
-    const leftEdge = w * EDGE_MARGIN;
-    const rightEdge = w * (1 - EDGE_MARGIN);
-    const topEdge = h * EDGE_MARGIN;
-    const bottomEdge = h * (1 - EDGE_MARGIN);
-    const arcRSide = Math.min(w, h) * 0.25;
-    const arcRVert = Math.min(w, h) * 0.18;
-    ctx.save();
-    ctx.strokeStyle = "rgba(106, 44, 255, 0.35)";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, h * 0.5, arcRSide, -Math.PI / 2, Math.PI / 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(w, h * 0.5, arcRSide, Math.PI / 2, (Math.PI * 3) / 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(w * 0.5, 0, arcRVert, 0, Math.PI);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(w * 0.5, h, arcRVert, Math.PI, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    // Trace trail (wizardly glow)
+    if (trace.length > 1) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(180, 120, 255, 0.55)";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(trace[0].x, trace[0].y);
+      for (let i = 1; i < trace.length; i++) ctx.lineTo(trace[i].x, trace[i].y);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255, 210, 120, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    let roiCenter = null;
-    let anyOpenHand = false;
     let singleFingerPos = null;
     const openHandCenters = [];
 
@@ -437,28 +327,27 @@ export function initHandDetection(video, canvas, options = {}) {
         const open = detectOpenHand(landmarks, handLabel);
         const singleFinger = detectSingleIndexFinger(landmarks, handLabel);
         if (open) {
-          anyOpenHand = true;
           openHandCenters.push({ cx, cy, radius });
           drawParticlesAroundHand(ctx, cx, cy, radius, time);
         }
         if (!singleFingerPos && singleFinger) {
           singleFingerPos = { x: landmarks[8].x * w, y: landmarks[8].y * h };
         }
-        if (!roiCenter && open) roiCenter = { x: cx, y: cy, radius };
       }
     }
     lastOpenHand = openHandCenters.length > 0 ? openHandCenters[0] : null;
 
+    const now = Date.now();
     if (singleFingerPos) {
+      lastPointerTime = now;
       if (!lastWandPos) lastWandPos = { x: singleFingerPos.x, y: singleFingerPos.y };
       else {
-        const smooth = 0.35;
         lastWandPos = {
-          x: lastWandPos.x + (singleFingerPos.x - lastWandPos.x) * smooth,
-          y: lastWandPos.y + (singleFingerPos.y - lastWandPos.y) * smooth,
+          x: lastWandPos.x + (singleFingerPos.x - lastWandPos.x) * TRACE_SMOOTHING,
+          y: lastWandPos.y + (singleFingerPos.y - lastWandPos.y) * TRACE_SMOOTHING,
         };
       }
-      wandHistory.push({ x: lastWandPos.x, y: lastWandPos.y, t: Date.now() });
+      wandHistory.push({ x: lastWandPos.x, y: lastWandPos.y, t: now });
       if (wandHistory.length > WAND_HISTORY_LEN) wandHistory.shift();
       ctx.save();
       ctx.strokeStyle = "rgba(255, 210, 120, 0.95)";
@@ -467,11 +356,67 @@ export function initHandDetection(video, canvas, options = {}) {
       ctx.arc(lastWandPos.x, lastWandPos.y, 9, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
+
+      if (
+        trace.length === 0 ||
+        Math.hypot(lastWandPos.x - trace[trace.length - 1].x, lastWandPos.y - trace[trace.length - 1].y) > TRACE_MIN_DIST
+      ) {
+        const dt = trace.length > 0 ? (now - trace[trace.length - 1].t) / 1000 : 0;
+        const dist = trace.length > 0 ? Math.hypot(lastWandPos.x - trace[trace.length - 1].x, lastWandPos.y - trace[trace.length - 1].y) : 0;
+        const speed = dt > 0 ? dist / dt : 0;
+        if (speed > TRACE_TOO_FAST_PX_PER_S && now - lastTooFastTime > 900) {
+          lastTooFastTime = now;
+          if (options.onPenalty) options.onPenalty("too_fast");
+        } else {
+          trace.push({ x: lastWandPos.x, y: lastWandPos.y, t: now });
+          if (trace.length > TRACE_MAX_POINTS) trace.shift();
+          lastTraceTime = now;
+        }
+      }
     } else {
-      lastWandPos = null;
-      holdDirection = null;
-      holdStart = 0;
-      holdPos = null;
+      if (lastWandPos && now - lastPointerTime <= POINTER_LOST_GRACE_MS) {
+        // keep last position briefly to avoid flicker
+      } else {
+        lastWandPos = null;
+      }
+      if (trace.length > 0 && now - lastTraceTime > TRACE_IDLE_MS) {
+        const gesture = detectSwipeGesture(trace);
+        if (gesture && now - lastCastTime > 300) {
+          lastCastTime = now;
+          const spell = SPELL_PATTERNS.find((s) => s.id === gesture);
+          const arsenal = options.getPlayerArsenal ? options.getPlayerArsenal() : playerArsenal;
+          if (spell && arsenal.has(spell.id)) {
+            if (options.onSpellCast) options.onSpellCast(spell);
+            if (spell.id === "attack" && wandHistory.length > 0) {
+              const last = wandHistory[wandHistory.length - 1];
+              fireballStart = { x: last.x, y: last.y };
+              fireballEndTime = time + 1.2;
+            }
+            if (spell.id === "defense") {
+              const origin = lastWandPos || (lastOpenHand ? { x: lastOpenHand.cx, y: lastOpenHand.cy } : null);
+              if (origin) {
+                iceCenter = { x: origin.x, y: origin.y };
+                iceEndTime = time + 1.1;
+              }
+            }
+            if (spell.id === "reflect") {
+              const origin = lastWandPos || (lastOpenHand ? { x: lastOpenHand.cx, y: lastOpenHand.cy } : null);
+              if (origin) {
+                reflectCenter = { x: origin.x, y: origin.y };
+                reflectEndTime = time + 1.1;
+              }
+            }
+          } else if (spell && options.onPenalty) {
+            options.onPenalty("not_in_arsenal");
+          }
+        } else if (!gesture) {
+          const len = traceLength(trace);
+          if (len > TRACE_MIN_LEN * 1.6 && options.onPenalty) {
+            options.onPenalty("wrong_pattern");
+          }
+        }
+        trace.length = 0;
+      }
     }
 
     if (hatReady && hatImg && faceLandmarks) {
@@ -495,98 +440,6 @@ export function initHandDetection(video, canvas, options = {}) {
       ctx.restore();
     }
 
-    if (anyOpenHand && lastWandPos) {
-      const mirroredX = w - lastWandPos.x;
-      const regionDir = getRegionDirection(mirroredX, lastWandPos.y, w, h);
-      if (!regionDir) {
-        holdDirection = null;
-        holdStart = 0;
-        holdPos = null;
-        lastDirection = null;
-      } else {
-        if (regionDir !== holdDirection) {
-          holdDirection = regionDir;
-          holdStart = Date.now();
-          holdPos = { x: mirroredX, y: lastWandPos.y };
-        } else if (holdPos) {
-          const drift = Math.hypot(mirroredX - holdPos.x, lastWandPos.y - holdPos.y);
-          if (drift > HOLD_STABILITY_PX) {
-            holdStart = Date.now();
-            holdPos = { x: mirroredX, y: lastWandPos.y };
-          }
-        }
-        if (holdDirection && holdStart && Date.now() - holdStart >= HOLD_MS && holdDirection !== lastDirection) {
-          lastDirection = holdDirection;
-          moveBuffer.push(holdDirection);
-          holdDirection = null;
-          holdStart = 0;
-          holdPos = null;
-        }
-      }
-    } else {
-      holdDirection = null;
-      holdStart = 0;
-      holdPos = null;
-      lastDirection = null;
-    }
-
-    if (moveBuffer.hasStarted() && moveBuffer.isStale()) {
-      const now = Date.now();
-      if (now - lastEvalTime > 500) {
-        lastEvalTime = now;
-        const arsenal = options.getPlayerArsenal ? options.getPlayerArsenal() : playerArsenal;
-        const result = evaluateMove(moveBuffer, arsenal, SPELL_PATTERNS);
-        if (result) {
-          if (result.type === "spell") {
-            if (options.onSpellCast) options.onSpellCast(result.spell);
-            if (result.spell.id === "attack" && wandHistory.length > 0) {
-              const last = wandHistory[wandHistory.length - 1];
-              fireballStart = { x: last.x, y: last.y };
-              fireballEndTime = time + 1.2;
-            }
-            if (result.spell.id === "defense") {
-              const origin = lastWandPos || (lastOpenHand ? { x: lastOpenHand.cx, y: lastOpenHand.cy } : null);
-              if (origin) {
-                iceCenter = { x: origin.x, y: origin.y };
-                iceEndTime = time + 1.1;
-              }
-            }
-            if (result.spell.id === "reflect") {
-              const origin = lastWandPos || (lastOpenHand ? { x: lastOpenHand.cx, y: lastOpenHand.cy } : null);
-              if (origin) {
-                reflectCenter = { x: origin.x, y: origin.y };
-                reflectEndTime = time + 1.1;
-              }
-            }
-          } else if (result.type === "penalty" && options.onPenalty) {
-            options.onPenalty(result.reason);
-          }
-          moveBuffer.clear();
-        }
-      }
-    }
-
-    if (holdDirection && holdStart && lastWandPos) {
-      const elapsed = Date.now() - holdStart;
-      const progress = 1 - Math.min(1, elapsed / HOLD_MS);
-      ctx.save();
-      ctx.fillStyle = "rgba(30, 10, 55, 0.7)";
-      ctx.beginPath();
-      ctx.arc(lastWandPos.x, lastWandPos.y, 22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(247, 195, 92, 0.95)";
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.arc(lastWandPos.x, lastWandPos.y, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(166, 90, 255, 0.95)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(lastWandPos.x, lastWandPos.y, 28, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
     if (time <= fireballEndTime) drawFireball(ctx, time);
     if (time <= iceEndTime) drawIce(ctx, time);
     if (time <= reflectEndTime) drawReflect(ctx, time, w, h);
@@ -606,15 +459,12 @@ export function initHandDetection(video, canvas, options = {}) {
     try {
       if (camera && typeof camera.stop === "function") camera.stop();
     } catch (_) {}
-    if (srcMat) try { srcMat.delete(); } catch (_) {}
   }
 
   return {
     cleanup,
-    getMoveBuffer: () => moveBuffer,
-    clearMoveBuffer: () => moveBuffer.clear(),
     setPlayerArsenal: (s) => { playerArsenal = s; },
   };
 }
 
-export { MoveBuffer, matchSpell, evaluateMove, SPELL_PATTERNS };
+export { SPELL_PATTERNS };
