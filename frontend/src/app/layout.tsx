@@ -20,7 +20,7 @@ export default function RootLayout({
         <ArcaneClouds />
         <GoldDustParticles count={50} />
         <MagicParticles />
-        <div className="relative z-10 mx-auto max-w-[500px] min-h-screen">
+  <div className="relative z-10 mx-auto max-w-[500px] min-h-screen">
           {children}
         </div>
       </body>
