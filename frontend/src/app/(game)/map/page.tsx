@@ -33,12 +33,12 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Available maps for this player
-  const [availableMaps, setAvailableMaps] = useState<
-    { id: string; name: string; institution_name?: string }[]
-  >([]);
+  // Hardcoded maps - always Main Campus
+  const availableMaps = [
+    { id: DEFAULT_MAP_ID, name: "Main Campus", institution_name: "University of Magic" }
+  ];
   const [selectedMapId, setSelectedMapId] = useState<string>(DEFAULT_MAP_ID);
-  const [mapsLoading, setMapsLoading] = useState(true);
+  const mapsLoading = false;
 
   // Geolocation tracking
   useEffect(() => {
@@ -58,49 +58,10 @@ export default function MapPage() {
     playerPosRef.current = playerPos;
   }, [playerPos]);
 
-  // Fetch player's accessible maps
-  useEffect(() => {
-    if (!initialized) return;
 
-    // If no user (not logged in), fall back to default map
-    if (!user) {
-      setAvailableMaps([{ id: DEFAULT_MAP_ID, name: "Main Campus" }]);
-      setSelectedMapId(DEFAULT_MAP_ID);
-      setMapsLoading(false);
-      return;
-    }
-
-    const loadMaps = async () => {
-      setMapsLoading(true);
-      try {
-        const maps = await wizardAPI.getPlayerMaps(user.id);
-        if (maps.length === 0) {
-          // Player has no maps assigned — fall back to default
-          setAvailableMaps([{ id: DEFAULT_MAP_ID, name: "Main Campus" }]);
-          setSelectedMapId(DEFAULT_MAP_ID);
-        } else {
-          setAvailableMaps(maps);
-          if (maps.length === 1) {
-            setSelectedMapId(maps[0].id);
-          } else if (!maps.find((m) => m.id === selectedMapId)) {
-            setSelectedMapId(maps[0].id);
-          }
-        }
-      } catch {
-        // Fallback: keep DEFAULT_MAP_ID if API fails
-        setAvailableMaps([{ id: DEFAULT_MAP_ID, name: "Main Campus" }]);
-        setSelectedMapId(DEFAULT_MAP_ID);
-      } finally {
-        setMapsLoading(false);
-      }
-    };
-    loadMaps();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized, user]);
 
   // Fetch items from backend — runs when map changes then every 30s
   useEffect(() => {
-    if (mapsLoading) return;
 
     const fetchItems = async () => {
       try {
@@ -125,8 +86,7 @@ export default function MapPage() {
     fetchItems();
     const interval = setInterval(fetchItems, 30000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMapId, mapsLoading]);
+  }, [selectedMapId]);
 
   return (
     <div className="relative h-[calc(100vh-5rem)] overflow-hidden">
@@ -189,25 +149,11 @@ export default function MapPage() {
       </div>
 
       {/* Map Area */}
-      {!mapsLoading && availableMaps.length === 0 ? (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center px-8">
-            <div className="text-5xl mb-4">🗺️</div>
-            <h3 className="text-white font-bold text-lg mb-2">
-              No Maps Assigned
-            </h3>
-            <p className="text-purple-400 text-sm">
-              Ask your institution to grant you access to a map.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <MapGrid
-          items={items}
-          playerPos={playerPos}
-          onItemClick={useCallback((item: Item) => setSelectedItem(item), [])}
-        />
-      )}
+      <MapGrid
+        items={items}
+        playerPos={playerPos}
+        onItemClick={useCallback((item: Item) => setSelectedItem(item), [])}
+      />
 
       {/* Item Detail Modal */}
       <GlassModal

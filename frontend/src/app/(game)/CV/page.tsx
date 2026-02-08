@@ -225,10 +225,10 @@ export default function CVPage() {
         }
         if (cancelled) return;
         const api = initHandDetection(video, canvas, {
-          onSpellCast: (spell: { id: string; name: string }) =>
-            onSpellCast(activePlayerRef.current, spell),
-          onPenalty: (reason: string) =>
-            onPenalty(activePlayerRef.current, reason),
+          onSpellCast: (playerId: 0 | 1, spell: { id: string; name: string }) =>
+            onSpellCast(playerId, spell),
+          onPenalty: (playerId: 0 | 1, reason: "wrong_pattern" | "not_in_arsenal" | "too_fast") =>
+            onPenalty(playerId, reason),
           getPlayerArsenal: () => playerArsenal.current,
           hatImageUrl: DEFAULT_HAT_URL,
         });

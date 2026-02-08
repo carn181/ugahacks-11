@@ -10,7 +10,6 @@ from app.schemas.schemas import Institution, ItemCreate, Profile
 
 router = APIRouter()
 
-
 @router.post("/institution/login", response_model=Institution)
 async def institution_login(credentials: Dict[str, str]):
     """
