@@ -13,7 +13,7 @@ const MODEL_SCALE = 0.8;
 const OBJECT_RING_RADIUS_MIN = 3.0;
 const OBJECT_RING_RADIUS_MAX = 5.0;
 const PROXIMITY_POLL_MS = 500;
-const AR_PROXIMITY_RADIUS = 20; // 20 meters for AR
+const AR_PROXIMITY_RADIUS = 200; // 200 meters for AR
 
 // Map backend item types to frontend types
 const mapBackendToARType = (backendType: string): ARGameObject["type"] => {

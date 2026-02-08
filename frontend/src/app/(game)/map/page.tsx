@@ -20,10 +20,10 @@ import { useAuth } from "@/services/authService";
 const DEFAULT_MAP_ID = "550e8400-e29b-41d4-a716-446655440011";
 const DEFAULT_LAT = 33.951;
 const DEFAULT_LNG = -83.3753;
-const FETCH_RADIUS_METERS = 40;
+const FETCH_RADIUS_METERS = 200;
 
 export default function MapPage() {
-  const { user } = useAuth();
+  const { user, initialized } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [playerPos, setPlayerPos] = useState<{
@@ -60,30 +60,43 @@ export default function MapPage() {
 
   // Fetch player's accessible maps
   useEffect(() => {
-    if (!user) return;
+    if (!initialized) return;
+
+    // If no user (not logged in), fall back to default map
+    if (!user) {
+      setAvailableMaps([{ id: DEFAULT_MAP_ID, name: "Main Campus" }]);
+      setSelectedMapId(DEFAULT_MAP_ID);
+      setMapsLoading(false);
+      return;
+    }
+
     const loadMaps = async () => {
       setMapsLoading(true);
       try {
         const maps = await wizardAPI.getPlayerMaps(user.id);
-        setAvailableMaps(maps);
-        if (maps.length === 1) {
-          setSelectedMapId(maps[0].id);
-        } else if (
-          maps.length > 0 &&
-          !maps.find((m) => m.id === selectedMapId)
-        ) {
-          setSelectedMapId(maps[0].id);
+        if (maps.length === 0) {
+          // Player has no maps assigned — fall back to default
+          setAvailableMaps([{ id: DEFAULT_MAP_ID, name: "Main Campus" }]);
+          setSelectedMapId(DEFAULT_MAP_ID);
+        } else {
+          setAvailableMaps(maps);
+          if (maps.length === 1) {
+            setSelectedMapId(maps[0].id);
+          } else if (!maps.find((m) => m.id === selectedMapId)) {
+            setSelectedMapId(maps[0].id);
+          }
         }
       } catch {
         // Fallback: keep DEFAULT_MAP_ID if API fails
         setAvailableMaps([{ id: DEFAULT_MAP_ID, name: "Main Campus" }]);
+        setSelectedMapId(DEFAULT_MAP_ID);
       } finally {
         setMapsLoading(false);
       }
     };
     loadMaps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [initialized, user]);
 
   // Fetch items from backend — runs when map changes then every 30s
   useEffect(() => {

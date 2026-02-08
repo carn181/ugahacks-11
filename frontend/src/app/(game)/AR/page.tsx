@@ -14,7 +14,7 @@ import type { Item } from "@/services/api";
 const DEFAULT_MAP_ID = "550e8400-e29b-41d4-a716-446655440011";
 const DEFAULT_LAT = 33.951;
 const DEFAULT_LNG = -83.3753;
-const AR_FETCH_RADIUS_M = 50;
+const AR_FETCH_RADIUS_M = 200;
 
 export default function ARPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
