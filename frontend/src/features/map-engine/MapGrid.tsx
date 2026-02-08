@@ -4,22 +4,9 @@ import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import "leaflet/dist/leaflet.css";
 import type { Item } from "@/services/api";
+import { getItemIcon, getItemExpirationStatus, getItemRarityColor } from "@/utils/itemUtils";
 
-const ITEM_EMOJI: Record<string, string> = {
-  Potion: "🧪",
-  Gem: "💎",
-  Chest: "📦",
-  Wand: "🪄",
-  Scroll: "📜",
-};
 
-const ITEM_COLOR: Record<string, string> = {
-  Potion: "#ef4444",
-  Gem: "#a855f7",
-  Chest: "#f59e0b",
-  Wand: "#fbbf24",
-  Scroll: "#6366f1",
-};
 
 export default function MapGrid({
   items,
@@ -92,20 +79,56 @@ export default function MapGrid({
       // GeoJSON is [longitude, latitude]
       const lng = coords[0];
       const lat = coords[1];
-      const emoji = ITEM_EMOJI[item.type] || "📦";
-      const color = ITEM_COLOR[item.type] || "#8b5cf6";
+      
+      const emoji = getItemIcon(item);
+      const expirationStatus = getItemExpirationStatus(item);
+      const isExpired = expirationStatus.isExpired;
+      const expiresSoon = expirationStatus.expiresSoon;
+      
+      // Dynamic styling based on expiration
+      let bgColor = "rgba(30,10,60,0.85)";
+      let borderColor = "#8b5cf6";
+      let opacity = "1";
+      let filter = "none";
+      
+      if (isExpired) {
+        bgColor = "rgba(107,114,128,0.5)"; // Gray
+        borderColor = "#6b7280";
+        opacity = "0.6";
+        filter = "grayscale(100%)";
+      } else if (expiresSoon) {
+        bgColor = "rgba(239,68,68,0.5)"; // Red tint
+        borderColor = "#ef4444";
+      }
 
       const html = `
         <div style="display:flex;align-items:center;justify-content:center;position:relative;">
           <div style="
             width:40px;height:40px;border-radius:50%;
-            background:rgba(30,10,60,0.85);
-            border:2px solid ${color};
+            background:${bgColor};
+            border:2px solid ${borderColor};
             display:flex;align-items:center;justify-content:center;
             font-size:20px;
-            box-shadow:0 0 10px ${color}88;
+            box-shadow:0 0 10px ${borderColor}88;
+            opacity:${opacity};
+            filter:${filter};
           ">${emoji}</div>
+          ${expiresSoon && !isExpired ? `
+            <div style="
+              position:absolute;top:-5px;right:-5px;
+              width:12px;height:12px;border-radius:50%;
+              background:#ef4444;
+              border:2px solid white;
+              animation:pulse 1s infinite;
+            "></div>
+          ` : ''}
         </div>
+        <style>
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+          }
+        </style>
       `;
 
       const icon = L.divIcon({

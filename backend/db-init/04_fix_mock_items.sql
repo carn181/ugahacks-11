@@ -1,0 +1,36 @@
+-- Fix Mock Items to Never Expire
+-- Run this to make demo items permanent
+
+UPDATE items 
+SET expires_at = NULL 
+WHERE id LIKE '550e8400-e29b-41d4-a716-446655440%' AND owner_id IS NULL;
+
+-- Or for specific item IDs that are mock data:
+UPDATE items 
+SET expires_at = NULL 
+WHERE id IN (
+    '550e8400-e29b-41d4-a716-446655440201',
+    '550e8400-e29b-41d4-a716-446655440202',
+    '550e8400-e29b-41d4-a716-446655440203',
+    '550e8400-e29b-41d4-a716-446655440211',
+    '550e8400-e29b-41d4-a716-446655440212',
+    '550e8400-e29b-41d4-a716-446655440213',
+    '550e8400-e29b-41d4-a716-446655440221',
+    '550e8400-e29b-41d4-a716-446655440222',
+    '550e8400-e29b-41d4-a716-446655440231',
+    '550e8400-e29b-41d4-a716-446655440232',
+    '550e8400-e29b-41d4-a716-446655440241',
+    '550e8400-e29b-41d4-a716-446655440242',
+    '550e8400-e29b-41d4-a716-446655440301',
+    '550e8400-e29b-41d4-a716-446655440302',
+    '550e8400-e29b-41d4-a716-446655440303',
+    '550e8400-e29b-41d4-a716-446655440401',
+    '550e8400-e29b-41d4-a716-446655440402',
+    '550e8400-e29b-41d4-a716-446655440403'
+);
+
+-- Verify the fix
+SELECT id, type, subtype, expires_at 
+FROM items 
+WHERE id LIKE '550e8400-e29b-41d4-a716-446655440%' 
+LIMIT 5;

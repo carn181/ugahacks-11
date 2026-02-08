@@ -23,7 +23,6 @@ async def get_nearby_items(
     FROM items
     WHERE map_id = :map_id
     AND owner_id IS NULL
-    AND expires_at > NOW()
     AND ST_DWithin(
         location::geography,
         ST_SetSRID(ST_MakePoint(CAST(:longitude AS float8), CAST(:latitude AS float8)), 4326)::geography,
@@ -97,10 +96,8 @@ async def collect_item(collect_data: ItemCollect):
             status_code=status.HTTP_400_BAD_REQUEST, detail="Item already owned"
         )
 
-    if item["expires_at"] and item["expires_at"] < datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Item has expired"
-        )
+    # Allow collection of expired items but return warning
+    is_expired = item["expires_at"] and item["expires_at"] < datetime.now(timezone.utc)
 
     # Check proximity (within 10 meters)
     is_within_range = await item_service.check_proximity(
@@ -136,7 +133,10 @@ async def collect_item(collect_data: ItemCollect):
         },
     )
 
-    return {"status": "collected", "item_id": collect_data.item_id}
+    response = {"status": "collected", "item_id": collect_data.item_id}
+    if is_expired:
+        response["warning"] = "Item was expired"
+    return response
 
 
 @router.post("/items/use")
@@ -161,7 +161,7 @@ async def use_item(use_data: ItemUse):
         )
 
     # Apply item effects based on type and subtype
-    effect_applied = await apply_item_effect(player_id, item)
+    effect_applied = await apply_item_effect(player_id, dict(item))
 
     if not effect_applied:
         raise HTTPException(
@@ -196,7 +196,8 @@ async def spawn_item(item_data: ItemCreate):
         },
     )
 
-    return {"status": "spawned", "item_id": result["id"]}
+    item_id = result["id"] if result else None
+    return {"status": "spawned", "item_id": item_id}
 
 
 async def apply_item_effect(player_id: UUID, item: dict) -> bool:
