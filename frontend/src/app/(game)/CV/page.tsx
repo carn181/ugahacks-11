@@ -41,7 +41,9 @@ function loadOpenCV(): Promise<void> {
       resolve();
       return;
     }
-    (window as unknown as { Module?: { onRuntimeInitialized: () => void } }).Module = {
+    (
+      window as unknown as { Module?: { onRuntimeInitialized: () => void } }
+    ).Module = {
       onRuntimeInitialized() {
         resolve();
       },
@@ -58,7 +60,10 @@ function loadOpenCV(): Promise<void> {
 export default function CVPage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
-  const [lastSpell, setLastSpell] = useState<{ id: string; name: string } | null>(null);
+  const [lastSpell, setLastSpell] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [lastPenalty, setLastPenalty] = useState<string | null>(null);
   const [movePattern, setMovePattern] = useState<string[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -70,7 +75,9 @@ export default function CVPage() {
     setPlayerArsenal: (s: Set<string>) => void;
   } | null>(null);
   const playerArsenal = useRef(defaultArsenal());
-  const patternIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const patternIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   const onSpellCast = useCallback((spell: { id: string; name: string }) => {
     setLastSpell(spell);
@@ -78,7 +85,11 @@ export default function CVPage() {
     setTimeout(() => setLastSpell(null), 3000);
   }, []);
   const onPenalty = useCallback((reason: string) => {
-    setLastPenalty(reason === "wrong_pattern" ? "Wrong move pattern!" : "Spell not in arsenal!");
+    setLastPenalty(
+      reason === "wrong_pattern"
+        ? "Wrong move pattern!"
+        : "Spell not in arsenal!",
+    );
     setLastSpell(null);
     setTimeout(() => setLastPenalty(null), 3000);
   }, []);
@@ -110,7 +121,10 @@ export default function CVPage() {
           onSpellCast,
           onPenalty,
           getPlayerArsenal: () => playerArsenal.current,
-          hatImageUrl: (witchHatUrl as { src?: string }).src ?? (witchHatUrl as string),
+          hatImageUrl:
+            typeof witchHatUrl === "string"
+              ? witchHatUrl
+              : ((witchHatUrl as unknown as { src?: string }).src ?? ""),
         });
         cleanupRef.current = api.cleanup;
         cvApiRef.current = api;
@@ -119,7 +133,11 @@ export default function CVPage() {
         setCvError(null);
       } catch (e) {
         if (!cancelled) {
-          setCvError(e instanceof Error ? e.message : "Failed to load camera / hand detection");
+          setCvError(
+            e instanceof Error
+              ? e.message
+              : "Failed to load camera / hand detection",
+          );
         }
       }
     })();
@@ -193,10 +211,38 @@ export default function CVPage() {
 
           {/* Grid overlay */}
           <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none">
-            <line x1="33%" y1="0" x2="33%" y2="100%" stroke="rgba(251,191,36,0.3)" strokeWidth="0.5" />
-            <line x1="66%" y1="0" x2="66%" y2="100%" stroke="rgba(251,191,36,0.3)" strokeWidth="0.5" />
-            <line x1="0" y1="33%" x2="100%" y2="33%" stroke="rgba(251,191,36,0.3)" strokeWidth="0.5" />
-            <line x1="0" y1="66%" x2="100%" y2="66%" stroke="rgba(251,191,36,0.3)" strokeWidth="0.5" />
+            <line
+              x1="33%"
+              y1="0"
+              x2="33%"
+              y2="100%"
+              stroke="rgba(251,191,36,0.3)"
+              strokeWidth="0.5"
+            />
+            <line
+              x1="66%"
+              y1="0"
+              x2="66%"
+              y2="100%"
+              stroke="rgba(251,191,36,0.3)"
+              strokeWidth="0.5"
+            />
+            <line
+              x1="0"
+              y1="33%"
+              x2="100%"
+              y2="33%"
+              stroke="rgba(251,191,36,0.3)"
+              strokeWidth="0.5"
+            />
+            <line
+              x1="0"
+              y1="66%"
+              x2="100%"
+              y2="66%"
+              stroke="rgba(251,191,36,0.3)"
+              strokeWidth="0.5"
+            />
           </svg>
 
           {/* Center indicator */}
@@ -227,11 +273,15 @@ export default function CVPage() {
         >
           <div>
             <h2 className="text-white font-bold text-sm">CV Workbench</h2>
-            <p className="text-purple-400 text-xs">Open palm = input on · Wand = direction (L R U D)</p>
+            <p className="text-purple-400 text-xs">
+              Open palm = input on · Wand = direction (L R U D)
+            </p>
           </div>
           <div className="flex items-center gap-1 text-xs font-bold">
             {cvError ? (
-              <span className="text-red-400 flex items-center gap-1">ERROR</span>
+              <span className="text-red-400 flex items-center gap-1">
+                ERROR
+              </span>
             ) : cameraReady ? (
               <span className="text-green-400 flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -250,14 +300,18 @@ export default function CVPage() {
       {/* Bottom panel: move buffer, spell/penalty */}
       <div className="absolute bottom-0 left-0 right-0 z-20 p-4 pb-6 space-y-3">
         <GlassCard className="!p-3">
-          <p className="text-xs font-bold text-[#f7c35c] mb-2">Spell Patterns</p>
+          <p className="text-xs font-bold text-[#f7c35c] mb-2">
+            Spell Patterns
+          </p>
           <div className="flex flex-wrap gap-2">
             {SPELL_PATTERNS.map((spell) => (
               <div
                 key={spell.id}
                 className="flex items-center gap-2 px-2 py-1 rounded-lg border border-[#6a2cff]/40 bg-[#2a0d4a]/50"
               >
-                <span className="text-xs text-[#fdf3d2] font-semibold">{spell.name}</span>
+                <span className="text-xs text-[#fdf3d2] font-semibold">
+                  {spell.name}
+                </span>
                 <div className="flex items-center gap-1">
                   {spell.pattern.map((d, i) => (
                     <span
@@ -286,10 +340,14 @@ export default function CVPage() {
         )}
         {cameraReady && (
           <GlassCard className="!p-3">
-            <p className="text-xs font-bold text-[#f7c35c] mb-1">Move (L R U D) — cleared after each move</p>
+            <p className="text-xs font-bold text-[#f7c35c] mb-1">
+              Move (L R U D) — cleared after each move
+            </p>
             <div className="flex flex-wrap gap-1 items-center">
               {movePattern.length === 0 ? (
-                <span className="text-[#b08cff] text-xs">Open palm + move wand to record</span>
+                <span className="text-[#b08cff] text-xs">
+                  Open palm + move wand to record
+                </span>
               ) : (
                 movePattern.map((d, i) => (
                   <span
