@@ -1,3 +1,4 @@
+import hashlib
 import json
 import uuid
 from typing import Any, Dict
@@ -24,14 +25,18 @@ async def institution_login(credentials: Dict[str, str]):
             status_code=400, detail="Institution name and password are required"
         )
 
-    # Try to find existing institution
+    # Hash password in Python to avoid SQL parameter casting issues
+    password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+
     query = """
     SELECT id, name
     FROM institutions
-    WHERE name = :name AND password_hash = encode(sha256(CAST(:password AS bytea)), 'hex')
+    WHERE name = :name AND password_hash = :password_hash
     """
 
-    result = await database.fetch_one(query, {"name": name, "password": password})
+    result = await database.fetch_one(
+        query, {"name": name, "password_hash": password_hash}
+    )
 
     if not result:
         raise HTTPException(status_code=401, detail="Invalid institution credentials")
