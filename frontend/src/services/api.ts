@@ -106,6 +106,10 @@ class WizardGoAPI {
     return this.request<Item[]>(`/player/${playerId}/inventory`);
   }
 
+  async getPlayerMaps(playerId: string): Promise<Map[]> {
+    return this.request<Map[]>(`/player/${playerId}/maps`);
+  }
+
   async syncPlayerLocation(
     playerId: string,
     location: Location,
@@ -275,6 +279,7 @@ export const wizardAPI = new WizardGoAPI();
 export const {
   getPlayer,
   getPlayerInventory,
+  getPlayerMaps,
   syncPlayerLocation,
   getNearbyItems,
   collectItem,

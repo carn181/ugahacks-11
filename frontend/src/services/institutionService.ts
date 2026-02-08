@@ -5,7 +5,7 @@ import React from "react";
 // Institution Service for Wizard Quest
 // Handles institution authentication and management
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 interface Institution {
   id: string;
@@ -120,7 +120,7 @@ class InstitutionService {
 
     try {
       const response = await fetch(
-        `${API_BASE}/api/institution/institution/login`,
+        `${API_BASE}/institution/institution/login`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -183,7 +183,7 @@ class InstitutionService {
     }
 
     const response = await fetch(
-      `${API_BASE}/api/institution/institution/${this.state.institution.id}/maps`,
+      `${API_BASE}/institution/institution/${this.state.institution.id}/maps`,
     );
     if (!response.ok) {
       throw new Error("Failed to fetch institution maps");
@@ -199,7 +199,7 @@ class InstitutionService {
     }
 
     const response = await fetch(
-      `${API_BASE}/api/institution/institution/${this.state.institution.id}/maps`,
+      `${API_BASE}/institution/institution/${this.state.institution.id}/maps`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -222,7 +222,7 @@ class InstitutionService {
     }
 
     const response = await fetch(
-      `${API_BASE}/api/institution/institution/${this.state.institution.id}/items`,
+      `${API_BASE}/institution/institution/${this.state.institution.id}/items`,
     );
     if (!response.ok) {
       throw new Error("Failed to fetch institution items");
@@ -245,7 +245,7 @@ class InstitutionService {
     }
 
     const response = await fetch(
-      `${API_BASE}/api/institution/institution/${this.state.institution.id}/items`,
+      `${API_BASE}/institution/institution/${this.state.institution.id}/items`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -268,7 +268,7 @@ class InstitutionService {
     }
 
     const response = await fetch(
-      `${API_BASE}/api/institution/institution/${this.state.institution.id}/items/${itemId}`,
+      `${API_BASE}/institution/institution/${this.state.institution.id}/items/${itemId}`,
       {
         method: "DELETE",
       },
@@ -277,6 +277,64 @@ class InstitutionService {
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || "Failed to delete item");
+    }
+  }
+
+  // Get students with access to a map
+  async getMapStudents(mapId: string): Promise<any[]> {
+    if (!this.state.institution) {
+      throw new Error("Not authenticated as institution");
+    }
+
+    const response = await fetch(
+      `${API_BASE}/institution/institution/${this.state.institution.id}/maps/${mapId}/students`,
+    );
+    if (!response.ok) {
+      throw new Error("Failed to fetch map students");
+    }
+
+    return await response.json();
+  }
+
+  // Grant student access to a map
+  async grantMapAccess(mapId: string, studentName: string): Promise<any> {
+    if (!this.state.institution) {
+      throw new Error("Not authenticated as institution");
+    }
+
+    const response = await fetch(
+      `${API_BASE}/institution/institution/${this.state.institution.id}/maps/${mapId}/students`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: studentName.trim() }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Failed to grant access");
+    }
+
+    return await response.json();
+  }
+
+  // Revoke student access from a map
+  async revokeMapAccess(mapId: string, profileId: string): Promise<void> {
+    if (!this.state.institution) {
+      throw new Error("Not authenticated as institution");
+    }
+
+    const response = await fetch(
+      `${API_BASE}/institution/institution/${this.state.institution.id}/maps/${mapId}/students/${profileId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Failed to revoke access");
     }
   }
 
@@ -381,6 +439,24 @@ export function useInstitution() {
     return await institutionService.deleteInstitutionItem(itemId);
   }, []);
 
+  const getMapStudents = React.useCallback(async (mapId: string) => {
+    return await institutionService.getMapStudents(mapId);
+  }, []);
+
+  const grantMapAccess = React.useCallback(
+    async (mapId: string, studentName: string) => {
+      return await institutionService.grantMapAccess(mapId, studentName);
+    },
+    [],
+  );
+
+  const revokeMapAccess = React.useCallback(
+    async (mapId: string, profileId: string) => {
+      return await institutionService.revokeMapAccess(mapId, profileId);
+    },
+    [],
+  );
+
   const authenticatedFetch = React.useCallback(
     (url: string, options?: RequestInit) => {
       return institutionService.authenticatedFetch(url, options);
@@ -398,6 +474,9 @@ export function useInstitution() {
     getInstitutionItems,
     createInstitutionItem,
     deleteInstitutionItem,
+    getMapStudents,
+    grantMapAccess,
+    revokeMapAccess,
     authenticatedFetch,
     getCurrentInstitutionId:
       institutionService.getCurrentInstitutionId.bind(institutionService),

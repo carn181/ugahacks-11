@@ -48,11 +48,14 @@ export default function InstitutionDashboard() {
     getInstitutionItems,
     createInstitutionItem,
     deleteInstitutionItem,
+    getMapStudents,
+    grantMapAccess,
+    revokeMapAccess,
   } = useInstitution();
 
-  const [activeTab, setActiveTab] = useState<"institution" | "design">(
-    "institution",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "institution" | "design" | "students"
+  >("institution");
 
   // Data state
   const [maps, setMaps] = useState<any[]>([]);
@@ -60,6 +63,13 @@ export default function InstitutionDashboard() {
   const [selectedMapId, setSelectedMapId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Students tab state
+  const [studentsMap, setStudentsMap] = useState<Record<string, any[]>>({});
+  const [studentSearchQuery, setStudentSearchQuery] = useState("");
+  const [addingStudent, setAddingStudent] = useState(false);
+  const [selectedStudentMapId, setSelectedStudentMapId] = useState<string>("");
+  const [expandedMapId, setExpandedMapId] = useState<string | null>(null);
 
   // Design mode state
   const [clickLocation, setClickLocation] = useState<{
@@ -104,6 +114,26 @@ export default function InstitutionDashboard() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
+
+  const loadStudents = useCallback(async () => {
+    if (maps.length === 0) return;
+    const studentsByMap: Record<string, any[]> = {};
+    for (const map of maps) {
+      try {
+        studentsByMap[map.id] = await getMapStudents(map.id);
+      } catch {
+        studentsByMap[map.id] = [];
+      }
+    }
+    setStudentsMap(studentsByMap);
+  }, [maps, getMapStudents]);
+
+  // Load students when tab becomes active
+  useEffect(() => {
+    if (activeTab === "students" && maps.length > 0) {
+      loadStudents();
+    }
+  }, [activeTab, maps, loadStudents]);
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     setClickLocation({ lat, lng });
@@ -183,6 +213,12 @@ export default function InstitutionDashboard() {
               onClick={() => setActiveTab("design")}
             >
               Design
+            </TabButton>
+            <TabButton
+              active={activeTab === "students"}
+              onClick={() => setActiveTab("students")}
+            >
+              Students
             </TabButton>
           </div>
         </div>
@@ -327,6 +363,172 @@ export default function InstitutionDashboard() {
                   </div>
                 )}
               </GlassCard>
+            </motion.div>
+          )}
+
+          {/* ── STUDENTS TAB ── */}
+          {activeTab === "students" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-6xl mx-auto px-4 py-8 space-y-6"
+            >
+              {maps.length === 0 ? (
+                <GlassCard>
+                  <p className="text-purple-400 text-sm">
+                    No maps available. Create a map first.
+                  </p>
+                </GlassCard>
+              ) : (
+                maps.map((map) => (
+                  <GlassCard key={map.id}>
+                    <div
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() =>
+                        setExpandedMapId(
+                          expandedMapId === map.id ? null : map.id,
+                        )
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🗺️</span>
+                        <span className="text-white font-bold">{map.name}</span>
+                        <span className="text-purple-400 text-sm">
+                          ({(studentsMap[map.id] || []).length} students)
+                        </span>
+                      </div>
+                      <span className="text-purple-400">
+                        {expandedMapId === map.id ? "▼" : "▶"}
+                      </span>
+                    </div>
+
+                    {expandedMapId === map.id && (
+                      <div className="mt-4 space-y-3">
+                        {/* Add student form */}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Wizard name..."
+                            value={
+                              selectedStudentMapId === map.id
+                                ? studentSearchQuery
+                                : ""
+                            }
+                            onFocus={() => setSelectedStudentMapId(map.id)}
+                            onChange={(e) => {
+                              setSelectedStudentMapId(map.id);
+                              setStudentSearchQuery(e.target.value);
+                            }}
+                            onKeyDown={async (e) => {
+                              if (
+                                e.key !== "Enter" ||
+                                !studentSearchQuery.trim()
+                              )
+                                return;
+                              setAddingStudent(true);
+                              try {
+                                await grantMapAccess(
+                                  map.id,
+                                  studentSearchQuery,
+                                );
+                                setStudentSearchQuery("");
+                                loadStudents();
+                              } catch (err) {
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to add student",
+                                );
+                              } finally {
+                                setAddingStudent(false);
+                              }
+                            }}
+                            className="flex-1 px-3 py-2 rounded-lg bg-purple-800/50 border border-purple-500/20 text-white text-sm placeholder-purple-500 focus:outline-none focus:border-amber-400/50"
+                          />
+                          <button
+                            onClick={async () => {
+                              if (!studentSearchQuery.trim()) return;
+                              setAddingStudent(true);
+                              try {
+                                await grantMapAccess(
+                                  map.id,
+                                  studentSearchQuery,
+                                );
+                                setStudentSearchQuery("");
+                                loadStudents();
+                              } catch (err) {
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to add student",
+                                );
+                              } finally {
+                                setAddingStudent(false);
+                              }
+                            }}
+                            disabled={addingStudent}
+                            className="px-4 py-2 rounded-lg bg-amber-400 text-purple-950 font-medium text-sm hover:bg-amber-300 disabled:opacity-50 transition-all"
+                          >
+                            {addingStudent ? "Adding..." : "Add"}
+                          </button>
+                        </div>
+
+                        {/* Student list */}
+                        {(studentsMap[map.id] || []).length === 0 ? (
+                          <p className="text-purple-500 text-sm">
+                            No students assigned yet.
+                          </p>
+                        ) : (
+                          <div className="space-y-1">
+                            {(studentsMap[map.id] || []).map((student) => (
+                              <div
+                                key={student.profile_id}
+                                className="flex items-center justify-between py-2 border-b border-purple-500/20 last:border-0"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">🧙</span>
+                                  <span className="text-white text-sm">
+                                    {student.profile_name}
+                                  </span>
+                                  <span className="text-purple-500 text-xs">
+                                    Lv.{student.level}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    if (
+                                      !window.confirm(
+                                        `Remove ${student.profile_name} from ${map.name}?`,
+                                      )
+                                    )
+                                      return;
+                                    try {
+                                      await revokeMapAccess(
+                                        map.id,
+                                        student.profile_id,
+                                      );
+                                      loadStudents();
+                                    } catch (err) {
+                                      setError(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Failed to remove student",
+                                      );
+                                    }
+                                  }}
+                                  className="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded border border-red-500/30 hover:border-red-400/50 transition-all"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </GlassCard>
+                ))
+              )}
             </motion.div>
           )}
 

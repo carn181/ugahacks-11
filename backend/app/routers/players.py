@@ -137,3 +137,39 @@ async def sync_player_location(sync_data: LocationUpdate):
         "status": "synced",
         "location": {"lat": sync_data.latitude, "lng": sync_data.longitude},
     }
+
+
+@router.get("/player/{player_id}/maps")
+async def get_player_maps(player_id: UUID):
+    """
+    Get all maps a player has access to.
+    """
+    player_exists = await database.fetch_one(
+        "SELECT 1 FROM profiles WHERE id = :player_id", {"player_id": player_id}
+    )
+    if not player_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Player not found"
+        )
+
+    query = """
+    SELECT m.id, m.name, m.institution_id, i.name as institution_name
+    FROM map_access ma
+    JOIN maps m ON ma.map_id = m.id
+    LEFT JOIN institutions i ON m.institution_id = i.id
+    WHERE ma.profile_id = :player_id
+    ORDER BY m.name
+    """
+    results = await database.fetch_all(query, {"player_id": player_id})
+
+    maps = []
+    for r in results:
+        maps.append(
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "institution_id": r["institution_id"],
+                "institution_name": r["institution_name"],
+            }
+        )
+    return maps

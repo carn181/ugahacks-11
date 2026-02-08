@@ -241,3 +241,109 @@ async def delete_institution_item(institution_id: str, item_id: str):
     )
 
     return {"status": "deleted", "item_id": item_id}
+
+
+@router.get("/institution/{institution_id}/maps/{map_id}/students")
+async def get_map_students(institution_id: str, map_id: str):
+    """
+    Get all students with access to a specific map.
+    """
+    # Verify map belongs to institution
+    map_check = await database.fetch_one(
+        "SELECT 1 FROM maps WHERE id = :map_id AND institution_id = :institution_id",
+        {"map_id": map_id, "institution_id": institution_id},
+    )
+    if not map_check:
+        raise HTTPException(
+            status_code=404, detail="Map not found or not owned by institution"
+        )
+
+    query = """
+    SELECT p.id, p.name, p.level, ma.granted_at
+    FROM map_access ma
+    JOIN profiles p ON ma.profile_id = p.id
+    WHERE ma.map_id = :map_id
+    ORDER BY p.name
+    """
+    results = await database.fetch_all(query, {"map_id": map_id})
+
+    students = []
+    for r in results:
+        students.append(
+            {
+                "profile_id": r["id"],
+                "profile_name": r["name"],
+                "level": r["level"],
+                "granted_at": r["granted_at"],
+            }
+        )
+    return students
+
+
+@router.post("/institution/{institution_id}/maps/{map_id}/students")
+async def grant_map_access(
+    institution_id: str, map_id: str, student_data: Dict[str, str]
+):
+    """
+    Grant a student access to a map. Accepts { "name": "WizardName" }.
+    """
+    # Verify map belongs to institution
+    map_check = await database.fetch_one(
+        "SELECT 1 FROM maps WHERE id = :map_id AND institution_id = :institution_id",
+        {"map_id": map_id, "institution_id": institution_id},
+    )
+    if not map_check:
+        raise HTTPException(
+            status_code=404, detail="Map not found or not owned by institution"
+        )
+
+    profile_name = student_data.get("name", "").strip()
+    if not profile_name:
+        raise HTTPException(status_code=400, detail="Student name is required")
+
+    profile = await database.fetch_one(
+        "SELECT id, name FROM profiles WHERE name = :name",
+        {"name": profile_name},
+    )
+    if not profile:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    query = """
+    INSERT INTO map_access (profile_id, map_id)
+    VALUES (:profile_id, :map_id)
+    ON CONFLICT (profile_id, map_id) DO NOTHING
+    RETURNING id
+    """
+    result = await database.fetch_one(
+        query, {"profile_id": profile["id"], "map_id": map_id}
+    )
+
+    return {
+        "status": "granted" if result else "already_granted",
+        "profile_id": profile["id"],
+        "profile_name": profile["name"],
+        "map_id": map_id,
+    }
+
+
+@router.delete("/institution/{institution_id}/maps/{map_id}/students/{profile_id}")
+async def revoke_map_access(institution_id: str, map_id: str, profile_id: str):
+    """
+    Revoke a student's access to a map.
+    """
+    # Verify map belongs to institution
+    map_check = await database.fetch_one(
+        "SELECT 1 FROM maps WHERE id = :map_id AND institution_id = :institution_id",
+        {"map_id": map_id, "institution_id": institution_id},
+    )
+    if not map_check:
+        raise HTTPException(
+            status_code=404, detail="Map not found or not owned by institution"
+        )
+
+    await database.execute(
+        "DELETE FROM map_access WHERE profile_id = :profile_id AND map_id = :map_id",
+        {"profile_id": profile_id, "map_id": map_id},
+    )
+
+    return {"status": "revoked", "profile_id": profile_id, "map_id": map_id}
