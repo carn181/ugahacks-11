@@ -10,6 +10,7 @@ const navItems = [
   { href: "/map", label: "Map", icon: "🗺️" },
   { href: "/AR-backend", label: "AR", icon: "📸" },
   { href: "/CV", label: "CV", icon: "🔬" },
+  { href: "/fight", label: "Fight", icon: "⚔️" },
   { href: "/inventory-backend", label: "Items", icon: "🎒" },
 ];
 

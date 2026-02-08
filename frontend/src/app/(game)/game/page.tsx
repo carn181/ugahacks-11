@@ -16,7 +16,7 @@ export default function GameDashboard() {
   };
 
   return (
-    <div className="px-4 pt-6 space-y-5">
+  <div className="px-4 pt-6 pb-16 space-y-5">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}

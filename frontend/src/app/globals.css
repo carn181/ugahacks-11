@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap");
+
 /* Cloud drift animations for 3D effect */
 .cloud-drift-top {
   animation: cloudDriftLeftRight 8s linear infinite;
@@ -73,6 +75,11 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+.hp-font {
+  font-family: "Cinzel", "Times New Roman", serif;
+  letter-spacing: 0.02em;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
@@ -130,4 +137,3 @@ body {
               radial-gradient(circle at 80% 70%, rgba(255,255,255,0.03), transparent 35%);
   mix-blend-mode: screen;
 }
-
