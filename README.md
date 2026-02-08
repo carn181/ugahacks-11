@@ -4,11 +4,33 @@ A magical location-based AR combat game where wizards battle for supremacy on co
 
 ## 🌐 Live Demo
 
-**Try Wizard Quest Now**: [https://discerning-protonematal-jetta.ngrok-free.dev](https://discerning-protonematal-jetta.ngrok-free.dev)
+**Try Wizard Quest Now**: [https://wizard-quest-uga.vercel.app](https://wizard-quest-uga.vercel.app)
 
 *Experience the magic directly in your browser - no installation required!*
 
 ⚠️ **Note**: For the best experience, use a mobile device with GPS and camera capabilities to enable AR features and location-based gameplay.
+
+### Demo Credentials
+
+#### Wizard Login (Student)
+Simply enter any wizard name to log in — no password required. Or use **Continue as Guest** for instant access.
+
+| Wizard Name | Notes |
+|-------------|-------|
+| `FireMage` | Level 5 wizard |
+| `IceQueen` | Level 3 wizard |
+| *(any name)* | Creates a new wizard profile |
+| **Guest** | Click "Continue as Guest" — no name needed |
+
+#### Institution Login
+Access the institution dashboard to design maps, place items, and manage students.
+
+| Institution Name | Password |
+|------------------|----------|
+| `University of Magic` | `wizard123` |
+| `Arcane Academy` | `magic123` |
+
+Institution portal: [https://wizard-quest-uga.vercel.app/institution/login](https://wizard-quest-uga.vercel.app/institution/login)
 
 ## 🎮 Features
 
@@ -53,7 +75,7 @@ institutions → maps → items
 
 ### 🌐 Try It Live First
 **No installation required!** Experience Wizard Quest immediately:
-[https://discerning-protonematal-jetta.ngrok-free.dev](https://discerning-protonematal-jetta.ngrok-free.dev)
+[https://wizard-quest-uga.vercel.app](https://wizard-quest-uga.vercel.app)
 
 ### Local Development Setup
 If you want to run Wizard Quest locally:
@@ -109,7 +131,7 @@ npm run dev
 ```
 
 6. **Access the Application**
-- **🌐 Live Demo**: https://discerning-protonematal-jetta.ngrok-free.dev
+- **🌐 Live Demo**: https://wizard-quest-uga.vercel.app
 - **🏠 Local Game**: http://localhost:3000
 - **🏫 Institution Portal**: http://localhost:3000/institution/login
 - **📚 API Documentation**: http://localhost:8000/docs
