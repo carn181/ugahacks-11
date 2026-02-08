@@ -26,6 +26,20 @@ export default function GlassButton({
       "bg-transparent border border-purple-500/30 text-purple-300 hover:bg-purple-900/40",
   };
 
+  // Add glowing effect for primary variant
+  if (variant === "primary") {
+    return (
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={onClick}
+        disabled={disabled}
+        className={`px-6 py-3 rounded-xl text-sm transition-all duration-200 cursor-pointer ${variants[variant]} ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className} glow-cta`}
+      >
+        {children}
+      </motion.button>
+    );
+  }
   return (
     <motion.button
       whileHover={{ scale: 1.02 }}

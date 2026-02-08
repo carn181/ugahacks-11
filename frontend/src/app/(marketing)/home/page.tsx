@@ -4,10 +4,20 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import GlassButton from "@/components/ui/GlassButton";
 import GlassCard from "@/components/ui/GlassCard";
+import MagicParticles from "@/components/MagicParticles";
+import ArcaneClouds from "@/components/ArcaneClouds";
+import GoldDustParticles from "@/components/GoldDustParticles";
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen px-6 py-12 text-center">
+    <div className="relative min-h-screen">
+      {/* Background visuals */}
+  <ArcaneClouds />
+  <GoldDustParticles count={50} />
+  <MagicParticles count={60} />
+
+      {/* Page content */}
+      <div className="flex flex-col items-center justify-center min-h-screen px-6 py-12 text-center z-10 relative">
       {/* Logo / Title */}
       <motion.div
         initial={{ opacity: 0, y: -30 }}
@@ -18,9 +28,15 @@ export default function HomePage() {
         <motion.div
           animate={{ rotate: [0, 5, -5, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="text-7xl mb-4"
+          className="mb-4"
         >
-          🧙‍♂️
+          <img
+            src="/wizardhat.png"
+            alt="Wizard Hat"
+            width={120}
+            height={120}
+            style={{ display: "inline-block" }}
+          />
         </motion.div>
         <h1 className="text-5xl font-extrabold bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
           Wizard Quest
@@ -28,10 +44,10 @@ export default function HomePage() {
         <p className="text-purple-300 mt-3 text-lg">
           Discover. Capture. Become Legendary.
         </p>
-      </motion.div>
+  </motion.div>
 
-      {/* Feature Cards */}
-      <div className="w-full space-y-4 mb-10">
+  {/* Feature Cards */}
+  <div className="w-full space-y-4 mb-10">
         <GlassCard>
           <div className="flex items-center gap-4">
             <span className="text-3xl">🗺️</span>
@@ -87,6 +103,7 @@ export default function HomePage() {
           </GlassButton>
         </Link>
       </motion.div>
+    </div>
     </div>
   );
 }
