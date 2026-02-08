@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import GlassCard from "@/components/ui/GlassCard";
 import { initHandDetection } from "./script";
@@ -224,11 +225,11 @@ export default function CVPage() {
         }
         if (cancelled) return;
         const api = initHandDetection(video, canvas, {
-          onSpellCast,
-          onPenalty,
+          onSpellCast: (spell: { id: string; name: string }) =>
+            onSpellCast(activePlayerRef.current, spell),
+          onPenalty: (reason: string) =>
+            onPenalty(activePlayerRef.current, reason),
           getPlayerArsenal: () => playerArsenal.current,
-          getActivePlayer: () =>
-            gameStartedRef.current ? activePlayerRef.current : -1,
           hatImageUrl:
             typeof witchHatUrl === "string"
               ? witchHatUrl

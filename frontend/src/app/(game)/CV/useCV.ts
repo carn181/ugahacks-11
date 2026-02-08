@@ -53,24 +53,22 @@ function loadOpenCV(): Promise<void> {
 export function useCV() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
-  const [lastSpell, setLastSpell] = useState<{ id: string; name: string } | null>(
-    null,
-  );
+  const [lastSpell, setLastSpell] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [lastPenalty, setLastPenalty] = useState<string | null>(null);
-  const [movePattern, setMovePattern] = useState<string[]>([]);
+
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const cvApiRef = useRef<{
-    getMoveBuffer: () => { getPattern: () => string[] };
-    clearMoveBuffer: () => void;
+    cleanup: () => void;
     setPlayerArsenal: (s: Set<string>) => void;
   } | null>(null);
   const playerArsenal = useRef(defaultArsenal());
-  const patternIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
+
 
   const onSpellCast = useCallback((spell: { id: string; name: string }) => {
     setLastSpell(spell);
@@ -124,7 +122,6 @@ export function useCV() {
         }
         if (cancelled) return;
         const api = initHandDetection(video, canvas, {
-          cv: cv || undefined,
           onSpellCast,
           onPenalty,
           getPlayerArsenal: () => playerArsenal.current,
@@ -151,7 +148,6 @@ export function useCV() {
 
     return () => {
       cancelled = true;
-      if (patternIntervalRef.current) clearInterval(patternIntervalRef.current);
       if (cleanupRef.current) {
         cleanupRef.current();
         cleanupRef.current = null;
@@ -161,21 +157,7 @@ export function useCV() {
     };
   }, [onSpellCast, onPenalty]);
 
-  useEffect(() => {
-    if (!cameraReady || !cvApiRef.current) return;
-    patternIntervalRef.current = setInterval(() => {
-      const buf = cvApiRef.current?.getMoveBuffer();
-      if (buf) setMovePattern(buf.getPattern());
-    }, 150);
-    return () => {
-      if (patternIntervalRef.current) clearInterval(patternIntervalRef.current);
-    };
-  }, [cameraReady]);
 
-  const handleClearMove = () => {
-    cvApiRef.current?.clearMoveBuffer();
-    setMovePattern([]);
-  };
 
   return {
     videoRef,
@@ -184,7 +166,5 @@ export function useCV() {
     cvError,
     lastSpell,
     lastPenalty,
-    movePattern,
-    handleClearMove,
   };
 }
