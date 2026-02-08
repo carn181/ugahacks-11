@@ -25,6 +25,9 @@ export default function ARPage() {
     error,
     arSupported,
     collectObject,
+    needsOrientationPermission,
+    orientationGranted,
+    requestOrientationPermission,
   } = useARJSEngine(canvasRef, videoRef);
 
   useEffect(() => {
@@ -144,6 +147,10 @@ export default function ARPage() {
                 className={`w-1.5 h-1.5 rounded-full ${geoAvailable ? "bg-green-400" : "bg-amber-400"}`}
                 title={geoAvailable ? "GPS on" : "GPS fallback"}
               />
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${orientationGranted ? "bg-green-400" : "bg-red-400"}`}
+                title={orientationGranted ? "Gyroscope on" : "Gyroscope off"}
+              />
             </div>
             <div className="flex items-center gap-1 text-amber-400 text-xs font-bold">
               <motion.div
@@ -214,6 +221,33 @@ export default function ARPage() {
           <div className="bg-red-900/70 backdrop-blur-xl border border-red-500/30 rounded-xl px-4 py-2 text-red-300 text-xs">
             {error}
           </div>
+        </div>
+      )}
+
+      {/* iOS orientation permission overlay */}
+      {needsOrientationPermission && !orientationGranted && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-purple-900/90 backdrop-blur-xl border border-purple-500/30 rounded-2xl p-6 mx-8 max-w-sm text-center"
+          >
+            <div className="text-4xl mb-3">&#x1F4F1;</div>
+            <h3 className="text-white text-lg font-bold mb-2">
+              Enable Motion Tracking
+            </h3>
+            <p className="text-purple-300 text-sm mb-4">
+              AR needs access to your device&apos;s motion sensors to track
+              where you&apos;re looking. Tap below to enable.
+            </p>
+            <GlassButton
+              variant="primary"
+              className="w-full py-3"
+              onClick={requestOrientationPermission}
+            >
+              Enable AR Tracking
+            </GlassButton>
+          </motion.div>
         </div>
       )}
 

@@ -17,21 +17,34 @@ export interface ARJSEngineState {
   error: string | null;
   arSupported: boolean;
   arMode: "webxr" | "markerless" | "fallback";
+  orientationGranted: boolean;
+  needsOrientationPermission: boolean;
 }
 
-// ── helpers ────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────
 
-/** Place objects in a ring around the camera so they're always visible.
- *  Each object gets evenly distributed in a circle at a comfortable
- *  viewing distance (3-5 units), all in front of the camera. */
-function distributeAroundCamera(count: number) {
+const MODEL_SCALE = 0.8;
+const OBJECT_RING_RADIUS_MIN = 3.0;
+const OBJECT_RING_RADIUS_MAX = 5.0;
+const PROXIMITY_POLL_MS = 500;
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Place objects in a full 360-degree ring in world space around the origin.
+ * Objects are evenly distributed so the user must physically turn around
+ * to find them all. This is the core AR experience.
+ */
+function distributeInWorldRing(count: number): THREE.Vector3[] {
   const positions: THREE.Vector3[] = [];
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2;
-    const radius = 3.5 + Math.random() * 1.5; // 3.5 – 5 units away
+    const radius =
+      OBJECT_RING_RADIUS_MIN +
+      Math.random() * (OBJECT_RING_RADIUS_MAX - OBJECT_RING_RADIUS_MIN);
     const x = Math.sin(angle) * radius;
-    const z = -Math.cos(angle) * radius; // negative Z = in front of camera
-    const y = -0.5 + Math.random() * 1.5; // -0.5 to 1.0 (eye-level spread)
+    const z = -Math.cos(angle) * radius;
+    const y = -0.3 + Math.random() * 1.0; // slight vertical spread around eye level
     positions.push(new THREE.Vector3(x, y, z));
   }
   return positions;
@@ -87,7 +100,62 @@ function createFallbackMesh(type: string): THREE.Mesh {
   return mesh;
 }
 
-// ── hook ───────────────────────────────────────────────────────────
+/**
+ * Convert device orientation (alpha, beta, gamma) to a proper Three.js
+ * quaternion. This uses the standard W3C Device Orientation → Three.js
+ * mapping used by Three.js DeviceOrientationControls (now removed from
+ * Three.js but the algorithm is standard).
+ *
+ * The key insight: the device reports orientation relative to Earth
+ * (alpha=compass, beta=tilt front/back, gamma=tilt left/right).
+ * We convert this to a camera quaternion that matches where the phone
+ * is physically pointing.
+ *
+ * Steps:
+ * 1. Create Euler from (beta, alpha, -gamma) in YXZ order
+ * 2. Apply a -90° rotation around X to convert from device-upright
+ *    (screen facing user) to landscape camera convention (screen = viewport)
+ * 3. Apply screen orientation compensation (portrait vs landscape)
+ */
+function deviceOrientationToQuaternion(
+  alpha: number,
+  beta: number,
+  gamma: number,
+  screenOrientation: number,
+): THREE.Quaternion {
+  const degToRad = Math.PI / 180;
+
+  // Convert degrees to radians
+  const a = alpha * degToRad; // compass heading (Z-axis rotation)
+  const b = beta * degToRad; // front-back tilt (X-axis rotation)
+  const g = gamma * degToRad; // left-right tilt (Y-axis rotation)
+
+  // W3C standard rotation: ZXY Euler order with (beta, alpha, -gamma)
+  const euler = new THREE.Euler();
+  euler.set(b, a, -g, "YXZ");
+
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromEuler(euler);
+
+  // Rotate -90° around X axis: converts "phone upright" to "phone is camera"
+  // When you hold your phone upright, the screen faces you. This rotation
+  // makes "looking through the screen" align with the camera direction.
+  const screenTransform = new THREE.Quaternion();
+  screenTransform.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+  quaternion.multiply(screenTransform);
+
+  // Compensate for screen orientation (portrait/landscape rotation)
+  const orientationTransform = new THREE.Quaternion();
+  orientationTransform.setFromAxisAngle(
+    new THREE.Vector3(0, 0, 1),
+    -screenOrientation * degToRad,
+  );
+  quaternion.premultiply(orientationTransform);
+
+  return quaternion;
+}
+
+// ── Hook ───────────────────────────────────────────────────────────
 
 export function useARJSEngine(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
@@ -103,6 +171,8 @@ export function useARJSEngine(
     error: null,
     arSupported: false,
     arMode: "fallback",
+    orientationGranted: false,
+    needsOrientationPermission: false,
   });
 
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -114,12 +184,54 @@ export function useARJSEngine(
   const playerPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const geoWatchRef = useRef<number | null>(null);
   const proximityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const orientationHandlerRef = useRef<
     ((e: DeviceOrientationEvent) => void) | null
   >(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const orientationChangeHandlerRef = useRef<(() => void) | null>(null);
 
-  // ── collect ────────────────────────────────────────────────────
+  // Orientation tracking refs — using refs (not state) for 60fps updates
+  const deviceOrientRef = useRef<{
+    alpha: number;
+    beta: number;
+    gamma: number;
+  } | null>(null);
+  const screenOrientRef = useRef<number>(0);
+  const targetQuaternionRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+  const hasOrientationRef = useRef(false);
+
+  // Touch fallback refs (for desktop or when gyroscope not available)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchRotRef = useRef<{ yaw: number; pitch: number }>({
+    yaw: 0,
+    pitch: 0,
+  });
+  const isTouchControlRef = useRef(false);
+
+  // ── Request device orientation permission (iOS 13+ requirement) ──
+  const requestOrientationPermission = useCallback(async () => {
+    const DOE = window.DeviceOrientationEvent as any;
+    if (typeof DOE?.requestPermission === "function") {
+      try {
+        const result = await DOE.requestPermission();
+        if (result === "granted") {
+          setState((prev) => ({
+            ...prev,
+            orientationGranted: true,
+            needsOrientationPermission: false,
+          }));
+          return true;
+        }
+      } catch {
+        console.warn("DeviceOrientation permission denied");
+      }
+      return false;
+    }
+    // Non-iOS: permission not needed
+    return true;
+  }, []);
+
+  // ── Collect object ─────────────────────────────────────────────
   const collectObject = useCallback((objectId: string) => {
     objectsRef.current = objectsRef.current.map((obj) =>
       obj.id === objectId ? { ...obj, collected: true } : obj,
@@ -139,35 +251,38 @@ export function useARJSEngine(
     }));
   }, []);
 
-  // ── main effect ────────────────────────────────────────────────
+  // ── Main initialization effect ─────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
 
     let disposed = false;
+    let animFrameId: number;
 
     async function initAR() {
-      try {
-        console.log("🚀 Initializing AR engine…");
+      // Re-capture with non-null assertion — outer guard already checked
+      const cvs = canvas!;
+      const vid = video!;
 
-        // ── Scene ────────────────────────────────────────────────
+      try {
+        console.log("[AR] Initializing engine…");
+
+        // ── Scene setup ──────────────────────────────────────────
         const scene = new THREE.Scene();
         sceneRef.current = scene;
 
         const camera = new THREE.PerspectiveCamera(
           70,
           window.innerWidth / window.innerHeight,
-          0.1,
+          0.01,
           1000,
         );
-        // Camera at origin, looking down -Z
         camera.position.set(0, 0, 0);
-        camera.lookAt(0, 0, -1);
         cameraRef.current = camera;
 
         const renderer = new THREE.WebGLRenderer({
-          canvas: canvas!,
+          canvas: cvs,
           antialias: true,
           alpha: true,
         });
@@ -175,11 +290,11 @@ export function useARJSEngine(
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         rendererRef.current = renderer;
 
-        // Lighting — strong so models are clearly visible
+        // Lighting
         scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        dirLight.position.set(3, 5, 4);
-        scene.add(dirLight);
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight1.position.set(3, 5, 4);
+        scene.add(dirLight1);
         const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
         dirLight2.position.set(-3, 2, -4);
         scene.add(dirLight2);
@@ -196,7 +311,7 @@ export function useARJSEngine(
             if (ok) {
               arMode = "webxr";
               arSupported = true;
-              console.log("✅ WebXR AR supported");
+              console.log("[AR] WebXR supported");
             }
           } catch {
             /* not available */
@@ -209,7 +324,7 @@ export function useARJSEngine(
         ) {
           arMode = "markerless";
           arSupported = true;
-          console.log("✅ Using camera overlay AR mode");
+          console.log("[AR] Camera overlay mode");
         }
 
         // ── Camera feed ──────────────────────────────────────────
@@ -223,42 +338,159 @@ export function useARJSEngine(
             },
           });
           cameraStreamRef.current = stream;
-          video!.srcObject = stream;
-          video!.setAttribute("playsinline", "true");
-          video!.muted = true;
-          await video!.play();
+          vid.srcObject = stream;
+          vid.setAttribute("playsinline", "true");
+          vid.muted = true;
+          await vid.play();
           cameraActive = true;
+          console.log("[AR] Camera feed active");
         } catch (err) {
-          console.warn("Camera access denied:", err);
+          console.warn("[AR] Camera denied:", err);
         }
 
-        // ── Device orientation ───────────────────────────────────
-        if (arMode !== "webxr") {
-          const DOE = window.DeviceOrientationEvent as any;
-          if (typeof DOE?.requestPermission === "function") {
-            try {
-              await DOE.requestPermission();
-            } catch {
-              /* denied */
-            }
-          }
+        // ── Device orientation setup ─────────────────────────────
+        // This is the critical piece: we listen for device orientation
+        // events and store the raw values. The render loop converts
+        // them to a quaternion and applies to the camera with SLERP
+        // smoothing every frame for buttery-smooth tracking.
 
-          const handleOrientation = (e: DeviceOrientationEvent) => {
-            if (!cameraRef.current || disposed) return;
-            const alpha = e.alpha ?? 0;
-            const beta = e.beta ?? 90;
-            const gamma = e.gamma ?? 0;
-            const f = 0.1; // smoothing factor
-            const cam = cameraRef.current;
-            cam.rotation.x +=
-              (((beta - 90) * Math.PI) / 180 - cam.rotation.x) * f;
-            cam.rotation.y += ((-alpha * Math.PI) / 180 - cam.rotation.y) * f;
-            cam.rotation.z +=
-              ((gamma * Math.PI) / 180 - cam.rotation.z) * f * 0.2;
+        let needsOrientationPermission = false;
+        let orientationGranted = false;
+
+        const DOE = window.DeviceOrientationEvent as any;
+        const needsPermissionAPI = typeof DOE?.requestPermission === "function";
+
+        if (needsPermissionAPI) {
+          // iOS 13+: permission must be requested from a user gesture.
+          // We'll set a flag so the UI can show a button.
+          needsOrientationPermission = true;
+          console.log("[AR] iOS detected — orientation permission needed");
+        }
+
+        // Register the orientation handler. On non-iOS it will fire
+        // immediately. On iOS it fires only after permission is granted.
+        const handleOrientation = (e: DeviceOrientationEvent) => {
+          if (disposed) return;
+          if (e.alpha === null && e.beta === null && e.gamma === null) return;
+
+          deviceOrientRef.current = {
+            alpha: e.alpha ?? 0,
+            beta: e.beta ?? 0,
+            gamma: e.gamma ?? 0,
           };
-          orientationHandlerRef.current = handleOrientation;
-          window.addEventListener("deviceorientation", handleOrientation);
+
+          if (!hasOrientationRef.current) {
+            hasOrientationRef.current = true;
+            orientationGranted = true;
+            setState((prev) => ({
+              ...prev,
+              orientationGranted: true,
+              needsOrientationPermission: false,
+            }));
+            console.log("[AR] Device orientation active");
+          }
+        };
+        orientationHandlerRef.current = handleOrientation;
+        window.addEventListener("deviceorientation", handleOrientation, true);
+
+        // Track screen orientation changes (portrait ↔ landscape)
+        const handleScreenOrientation = () => {
+          screenOrientRef.current =
+            (screen.orientation?.angle ?? (window.orientation as number)) || 0;
+        };
+        orientationChangeHandlerRef.current = handleScreenOrientation;
+        handleScreenOrientation(); // set initial value
+
+        if (screen.orientation) {
+          screen.orientation.addEventListener(
+            "change",
+            handleScreenOrientation,
+          );
+        } else {
+          window.addEventListener("orientationchange", handleScreenOrientation);
         }
+
+        // ── Touch fallback for desktop / no gyroscope ────────────
+        // If after 2 seconds we haven't received any orientation events,
+        // enable touch-based camera control.
+        const touchFallbackTimeout = setTimeout(() => {
+          if (!hasOrientationRef.current && !disposed) {
+            console.log("[AR] No gyroscope detected — enabling touch controls");
+            isTouchControlRef.current = true;
+            setState((prev) => ({
+              ...prev,
+              needsOrientationPermission: false,
+            }));
+          }
+        }, 2000);
+
+        const handleTouchStart = (e: TouchEvent) => {
+          if (!isTouchControlRef.current) return;
+          touchStartRef.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY,
+          };
+        };
+        const handleTouchMove = (e: TouchEvent) => {
+          if (!isTouchControlRef.current || !touchStartRef.current) return;
+          e.preventDefault();
+          const dx = e.touches[0].clientX - touchStartRef.current.x;
+          const dy = e.touches[0].clientY - touchStartRef.current.y;
+          touchRotRef.current.yaw -= dx * 0.004;
+          touchRotRef.current.pitch -= dy * 0.004;
+          // Clamp pitch to avoid flipping
+          touchRotRef.current.pitch = Math.max(
+            -Math.PI / 2,
+            Math.min(Math.PI / 2, touchRotRef.current.pitch),
+          );
+          touchStartRef.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY,
+          };
+        };
+        const handleTouchEnd = () => {
+          touchStartRef.current = null;
+        };
+
+        // Mouse fallback for desktop
+        let mouseDown = false;
+        const handleMouseDown = (e: MouseEvent) => {
+          if (!isTouchControlRef.current) return;
+          mouseDown = true;
+          touchStartRef.current = { x: e.clientX, y: e.clientY };
+        };
+        const handleMouseMove = (e: MouseEvent) => {
+          if (
+            !isTouchControlRef.current ||
+            !mouseDown ||
+            !touchStartRef.current
+          )
+            return;
+          const dx = e.clientX - touchStartRef.current.x;
+          const dy = e.clientY - touchStartRef.current.y;
+          touchRotRef.current.yaw -= dx * 0.004;
+          touchRotRef.current.pitch -= dy * 0.004;
+          touchRotRef.current.pitch = Math.max(
+            -Math.PI / 2,
+            Math.min(Math.PI / 2, touchRotRef.current.pitch),
+          );
+          touchStartRef.current = { x: e.clientX, y: e.clientY };
+        };
+        const handleMouseUp = () => {
+          mouseDown = false;
+          touchStartRef.current = null;
+        };
+
+        cvs.addEventListener("touchstart", handleTouchStart, {
+          passive: false,
+        });
+        cvs.addEventListener("touchmove", handleTouchMove, {
+          passive: false,
+        });
+        cvs.addEventListener("touchend", handleTouchEnd);
+        cvs.addEventListener("mousedown", handleMouseDown);
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
 
         // ── Geolocation ──────────────────────────────────────────
         let geoAvailable = false;
@@ -277,29 +509,30 @@ export function useARJSEngine(
           playerLng = pos.coords.longitude;
           geoAvailable = true;
           console.log(
-            `📍 GPS lock: ${playerLat.toFixed(5)}, ${playerLng.toFixed(5)}`,
+            `[AR] GPS: ${playerLat.toFixed(5)}, ${playerLng.toFixed(5)}`,
           );
         } catch {
-          console.log("📍 Using fallback position (no GPS)");
+          console.log("[AR] No GPS — using fallback position");
         }
 
         playerPosRef.current = { lat: playerLat, lng: playerLng };
 
-        // ── Spawn objects (GPS coords for proximity, visual positions
-        //    are placed in a ring around the camera) ──────────────
+        // ── Spawn objects in world space ──────────────────────────
         const objects = generateRandomNearbyObjects(playerLat, playerLng);
         objectsRef.current = objects;
 
-        const visualPositions = distributeAroundCamera(objects.length);
+        // Objects go into a 360° ring in world space. The camera stays
+        // at the origin and rotates via device orientation, so objects
+        // naturally enter and exit the field of view as the user turns.
+        const worldPositions = distributeInWorldRing(objects.length);
 
         // ── Load 3D models ───────────────────────────────────────
         const loader = new GLTFLoader();
-        const MODEL_SCALE = 0.8; // big enough to see clearly
 
         for (let i = 0; i < objects.length; i++) {
           if (disposed) break;
           const obj = objects[i];
-          const vPos = visualPositions[i];
+          const wPos = worldPositions[i];
 
           let mesh: THREE.Object3D;
 
@@ -307,39 +540,40 @@ export function useARJSEngine(
             const gltf = await loader.loadAsync(`/models/${obj.type}.glb`);
             mesh = gltf.scene;
 
-            // Normalize model size: compute bounding box, scale to ~1 unit
+            // Normalize to consistent size via bounding box
             const box = new THREE.Box3().setFromObject(mesh);
             const size = new THREE.Vector3();
             box.getSize(size);
             const maxDim = Math.max(size.x, size.y, size.z);
-            const normalizedScale = (1 / maxDim) * MODEL_SCALE;
-            mesh.scale.setScalar(normalizedScale);
+            if (maxDim > 0) {
+              const s = (1 / maxDim) * MODEL_SCALE;
+              mesh.scale.setScalar(s);
+            }
 
-            // Center the model on its own bounding box
+            // Re-center on bounding box after scaling
+            const scaledBox = new THREE.Box3().setFromObject(mesh);
             const center = new THREE.Vector3();
-            box.getCenter(center);
+            scaledBox.getCenter(center);
             mesh.position.set(
-              vPos.x - center.x * normalizedScale,
-              vPos.y - center.y * normalizedScale,
-              vPos.z - center.z * normalizedScale,
+              wPos.x - center.x + mesh.position.x,
+              wPos.y - center.y + mesh.position.y,
+              wPos.z - center.z + mesh.position.z,
             );
 
-            console.log(
-              `✅ Loaded 3D model: ${obj.type} (scale: ${normalizedScale.toFixed(2)})`,
-            );
+            console.log(`[AR] Loaded model: ${obj.type}`);
           } catch {
-            console.warn(`⚠️ Fallback shape for ${obj.type}`);
+            console.warn(`[AR] Fallback shape: ${obj.type}`);
             mesh = createFallbackMesh(obj.type);
-            mesh.position.copy(vPos);
+            mesh.position.copy(wPos);
           }
 
-          mesh.userData.baseY = vPos.y;
-          mesh.userData.basePos = vPos.clone();
+          mesh.userData.objectId = obj.id;
+          mesh.userData.baseY = wPos.y;
           scene.add(mesh);
           objectMeshesRef.current.set(obj.id, mesh);
         }
 
-        // ── GPS watch (only updates proximity, not visual positions) ─
+        // ── GPS watch ────────────────────────────────────────────
         if (geoAvailable) {
           geoWatchRef.current = navigator.geolocation.watchPosition(
             (pos) => {
@@ -360,7 +594,7 @@ export function useARJSEngine(
           );
         }
 
-        // ── Proximity polling (uses real GPS distance) ───────────
+        // ── Proximity polling ────────────────────────────────────
         proximityTimerRef.current = setInterval(() => {
           if (!playerPosRef.current || disposed) return;
           let closest: ARGameObject | null = null;
@@ -384,28 +618,61 @@ export function useARJSEngine(
             if (prev.nearbyObject?.id === closest?.id) return prev;
             return { ...prev, nearbyObject: closest };
           });
-        }, 500);
+        }, PROXIMITY_POLL_MS);
 
         // ── Render loop ──────────────────────────────────────────
         const clock = new THREE.Clock();
+        const currentQ = new THREE.Quaternion(); // smoothed camera quaternion
+        let firstFrame = true;
+
         const renderLoop = () => {
           if (disposed) return;
-          requestAnimationFrame(renderLoop);
+          animFrameId = requestAnimationFrame(renderLoop);
 
           const t = clock.getElapsedTime();
 
-          // Animate: gentle float + slow spin
+          // ── Update camera from device orientation ──────────────
+          if (hasOrientationRef.current && deviceOrientRef.current) {
+            const { alpha, beta, gamma } = deviceOrientRef.current;
+            const targetQ = deviceOrientationToQuaternion(
+              alpha,
+              beta,
+              gamma,
+              screenOrientRef.current,
+            );
+            targetQuaternionRef.current.copy(targetQ);
+
+            if (firstFrame) {
+              // Snap to orientation on first frame (no smoothing)
+              currentQ.copy(targetQ);
+              firstFrame = false;
+            } else {
+              // SLERP smoothing: 0.3 = responsive but not jittery
+              currentQ.slerp(targetQ, 0.3);
+            }
+            camera.quaternion.copy(currentQ);
+          } else if (isTouchControlRef.current) {
+            // Touch/mouse fallback: simple Euler rotation
+            camera.rotation.set(
+              touchRotRef.current.pitch,
+              touchRotRef.current.yaw,
+              0,
+              "YXZ",
+            );
+          }
+
+          // ── Animate objects: float + spin ──────────────────────
           objectMeshesRef.current.forEach((mesh) => {
             const baseY = (mesh.userData.baseY as number) ?? 0;
-            mesh.position.y = baseY + Math.sin(t * 1.2 + mesh.id) * 0.15;
-            mesh.rotation.y = t * 0.6;
+            mesh.position.y = baseY + Math.sin(t * 1.5 + mesh.id) * 0.12;
+            mesh.rotation.y = t * 0.5;
           });
 
           renderer.render(scene, camera);
         };
         renderLoop();
 
-        // ── Resize ───────────────────────────────────────────────
+        // ── Resize handler ───────────────────────────────────────
         const handleResize = () => {
           camera.aspect = window.innerWidth / window.innerHeight;
           camera.updateProjectionMatrix();
@@ -413,7 +680,7 @@ export function useARJSEngine(
         };
         window.addEventListener("resize", handleResize);
 
-        // ── Done ─────────────────────────────────────────────────
+        // ── Update state ─────────────────────────────────────────
         setState({
           ready: true,
           cameraActive,
@@ -424,16 +691,24 @@ export function useARJSEngine(
           error: null,
           arSupported,
           arMode,
+          orientationGranted,
+          needsOrientationPermission,
         });
-        console.log(
-          `🎯 AR engine ready — mode: ${arMode}, objects: ${objects.length}`,
-        );
+        console.log(`[AR] Ready — mode: ${arMode}, objects: ${objects.length}`);
 
+        // ── Cleanup closures (returned from initAR, not from effect) ─
         return () => {
           window.removeEventListener("resize", handleResize);
+          clearTimeout(touchFallbackTimeout);
+          cvs.removeEventListener("touchstart", handleTouchStart);
+          cvs.removeEventListener("touchmove", handleTouchMove);
+          cvs.removeEventListener("touchend", handleTouchEnd);
+          cvs.removeEventListener("mousedown", handleMouseDown);
+          window.removeEventListener("mousemove", handleMouseMove);
+          window.removeEventListener("mouseup", handleMouseUp);
         };
       } catch (error) {
-        console.error("❌ AR init failed:", error);
+        console.error("[AR] Init failed:", error);
         setState((prev) => ({
           ...prev,
           error:
@@ -443,10 +718,15 @@ export function useARJSEngine(
       }
     }
 
-    initAR();
+    let cleanupFromInit: (() => void) | undefined;
+    initAR().then((fn) => {
+      if (fn) cleanupFromInit = fn;
+    });
 
     return () => {
       disposed = true;
+      cleanupFromInit?.();
+      if (animFrameId) cancelAnimationFrame(animFrameId);
       if (geoWatchRef.current !== null)
         navigator.geolocation.clearWatch(geoWatchRef.current);
       if (proximityTimerRef.current !== null)
@@ -456,12 +736,26 @@ export function useARJSEngine(
           "deviceorientation",
           orientationHandlerRef.current,
         );
+      if (orientationChangeHandlerRef.current) {
+        if (screen.orientation) {
+          screen.orientation.removeEventListener(
+            "change",
+            orientationChangeHandlerRef.current,
+          );
+        } else {
+          window.removeEventListener(
+            "orientationchange",
+            orientationChangeHandlerRef.current,
+          );
+        }
+      }
       if (cameraStreamRef.current)
         cameraStreamRef.current.getTracks().forEach((t) => t.stop());
       if (rendererRef.current) rendererRef.current.dispose();
       objectMeshesRef.current.clear();
     };
-  }, [canvasRef, videoRef, collectObject]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasRef, videoRef]);
 
-  return { ...state, collectObject };
+  return { ...state, collectObject, requestOrientationPermission };
 }
