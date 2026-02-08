@@ -121,7 +121,7 @@ async def get_institution_items(institution_id: str):
     FROM items i
     JOIN maps m ON i.map_id = m.id
     WHERE m.institution_id = :institution_id AND i.owner_id IS NULL
-    ORDER BY m.name, i.created_at DESC
+    ORDER BY m.name, i.type
     """
 
     results = await database.fetch_all(query, {"institution_id": institution_id})
@@ -180,9 +180,9 @@ async def create_institution_item(institution_id: str, item_data: Dict[str, Any]
     query = """
     INSERT INTO items (id, type, subtype, map_id, location, expires_at)
     VALUES (:id, :type, :subtype, :map_id,
-            ST_SetSRID(ST_MakePoint(CAST(:longitude AS float8), CAST(:latitude AS float8)), 4326),
+            ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326),
             CASE WHEN :expires_in_hours > 0
-                 THEN NOW() + INTERVAL '1 hour' * :expires_in_hours
+                 THEN NOW() + make_interval(hours => :expires_in_hours)
                  ELSE NULL END)
     RETURNING id, type, subtype, map_id, expires_at
     """
@@ -194,9 +194,9 @@ async def create_institution_item(institution_id: str, item_data: Dict[str, Any]
             "type": item_data["type"],
             "subtype": item_data["subtype"],
             "map_id": item_data["map_id"],
-            "longitude": item_data["longitude"],
-            "latitude": item_data["latitude"],
-            "expires_in_hours": expires_in_hours,
+            "longitude": float(item_data["longitude"]),
+            "latitude": float(item_data["latitude"]),
+            "expires_in_hours": int(expires_in_hours),
         },
     )
 
@@ -235,10 +235,6 @@ async def delete_institution_item(institution_id: str, item_id: str):
             status_code=404, detail="Item not found or not owned by institution"
         )
 
-    # Delete the item
-    await database.execute(
-        "DELETE FROM items WHERE id = :item_id", {"item_id": item_id}
-    )
     # Delete the item
     await database.execute(
         "DELETE FROM items WHERE id = :item_id", {"item_id": item_id}
