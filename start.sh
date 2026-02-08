@@ -2,7 +2,7 @@
 # start.sh - Railpack/Nixpacks entrypoint to run the FastAPI backend
 # Location: repo root (ugahacks-11/start.sh)
 
-set -euo pipefail
+set -eu
 
 # Default port for Railway/Nixpacks. Railway sets $PORT for you, but we provide a fallback.
 PORT="${PORT:-8000}"
