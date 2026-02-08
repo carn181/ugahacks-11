@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { ARGameObject } from "@/types";
-import { getDistanceMeters } from "./proximity";
+import type { Item } from "@/services/api";
+import { getDistanceMeters, geoToLocal } from "./proximity";
 import { generateRandomNearbyObjects } from "./sampleObjects";
 
 export interface ARJSEngineState {
@@ -27,6 +28,11 @@ const MODEL_SCALE = 0.8;
 const OBJECT_RING_RADIUS_MIN = 3.0;
 const OBJECT_RING_RADIUS_MAX = 5.0;
 const PROXIMITY_POLL_MS = 500;
+// Max real-world distance (meters) at which items are visible in AR
+const AR_VISIBILITY_RADIUS_M = 50;
+// Scale factor: compress real GPS offsets into visible 3D space
+// Items 50m away → placed at most ~8m in scene (still visible)
+const GPS_TO_SCENE_SCALE = 0.16;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -155,11 +161,38 @@ function deviceOrientationToQuaternion(
   return quaternion;
 }
 
+// ── Convert backend Item → ARGameObject ────────────────────────────
+
+function itemToARObject(item: Item): ARGameObject | null {
+  const coords = item.location?.coordinates;
+  if (!coords || coords.length < 2) return null;
+  const [lng, lat] = coords; // GeoJSON is [lng, lat]
+  const typeMap: Record<string, ARGameObject["type"]> = {
+    Potion: "potion",
+    Gem: "gem",
+    Chest: "chest",
+    Wand: "wand",
+    Scroll: "scroll",
+  };
+  return {
+    id: item.id,
+    type: typeMap[item.type] ?? "chest",
+    name: item.subtype,
+    description: `${item.type} — ${item.subtype}`,
+    rarity: "Common",
+    position: { lat, lng, altitude: 0.5 },
+    pickupRadius: 5,
+    spriteKey: (typeMap[item.type] ?? "chest") as ARGameObject["type"],
+    collected: false,
+  };
+}
+
 // ── Hook ───────────────────────────────────────────────────────────
 
 export function useARJSEngine(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   videoRef: React.RefObject<HTMLVideoElement | null>,
+  realItems?: Item[],
 ) {
   const [state, setState] = useState<ARJSEngineState>({
     ready: false,
@@ -518,13 +551,46 @@ export function useARJSEngine(
         playerPosRef.current = { lat: playerLat, lng: playerLng };
 
         // ── Spawn objects in world space ──────────────────────────
-        const objects = generateRandomNearbyObjects(playerLat, playerLng);
-        objectsRef.current = objects;
+        // Use real backend items if provided; fall back to random samples.
+        let objects: ARGameObject[];
+        let worldPositions: THREE.Vector3[];
 
-        // Objects go into a 360° ring in world space. The camera stays
-        // at the origin and rotates via device orientation, so objects
-        // naturally enter and exit the field of view as the user turns.
-        const worldPositions = distributeInWorldRing(objects.length);
+        const nearbyRealItems = (realItems ?? [])
+          .map(itemToARObject)
+          .filter((o): o is ARGameObject => {
+            if (!o) return false;
+            const d = getDistanceMeters(
+              playerLat,
+              playerLng,
+              o.position.lat,
+              o.position.lng,
+            );
+            return d <= AR_VISIBILITY_RADIUS_M;
+          });
+
+        if (nearbyRealItems.length > 0) {
+          objects = nearbyRealItems;
+          // Convert GPS offset → 3D world position (scaled to scene units)
+          worldPositions = objects.map((obj) => {
+            const local = geoToLocal(
+              playerLat,
+              playerLng,
+              obj.position.lat,
+              obj.position.lng,
+              obj.position.altitude,
+            );
+            return new THREE.Vector3(
+              local.x * GPS_TO_SCENE_SCALE,
+              local.y,
+              local.z * GPS_TO_SCENE_SCALE,
+            );
+          });
+        } else {
+          objects = generateRandomNearbyObjects(playerLat, playerLng);
+          worldPositions = distributeInWorldRing(objects.length);
+        }
+
+        objectsRef.current = objects;
 
         // ── Load 3D models ───────────────────────────────────────
         const loader = new GLTFLoader();
@@ -581,13 +647,6 @@ export function useARJSEngine(
                 lat: pos.coords.latitude,
                 lng: pos.coords.longitude,
               };
-              setState((prev) => ({
-                ...prev,
-                playerPosition: {
-                  lat: pos.coords.latitude,
-                  lng: pos.coords.longitude,
-                },
-              }));
             },
             () => {},
             { enableHighAccuracy: true, maximumAge: 2000 },

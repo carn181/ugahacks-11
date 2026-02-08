@@ -8,20 +8,18 @@ import GlassButton from "@/components/ui/GlassButton";
 import { RARITY_COLORS, RARITY_BG_COLORS } from "@/types";
 import { wizardAPI } from "@/services/api";
 import type { Item } from "@/services/api";
-import { 
-  getItemIcon, 
-  getItemExpirationStatus, 
+import {
+  getItemIcon,
+  getItemExpirationStatus,
   getItemRarityColor,
-  formatItemDistance 
+  formatItemDistance,
 } from "@/utils/itemUtils";
 
 // Default map: Main Campus (UGA MLC area)
 const DEFAULT_MAP_ID = "550e8400-e29b-41d4-a716-446655440011";
 const DEFAULT_LAT = 33.951;
 const DEFAULT_LNG = -83.3753;
-const FETCH_RADIUS_METERS = 1000;
-
-
+const FETCH_RADIUS_METERS = 40;
 
 export default function MapPage() {
   const [items, setItems] = useState<Item[]>([]);
@@ -96,9 +94,11 @@ export default function MapPage() {
                 : error
                   ? "⚠ " + error
                   : (() => {
-                      const expiredCount = items.filter(item => getItemExpirationStatus(item).isExpired).length;
+                      const expiredCount = items.filter(
+                        (item) => getItemExpirationStatus(item).isExpired,
+                      ).length;
                       const activeCount = items.length - expiredCount;
-                      return `${activeCount} active${expiredCount > 0 ? ` (${expiredCount} expired)` : ''} items nearby`;
+                      return `${activeCount} active${expiredCount > 0 ? ` (${expiredCount} expired)` : ""} items nearby`;
                     })()}
             </p>
           </div>
@@ -130,45 +130,57 @@ export default function MapPage() {
             : ""
         }
       >
-        {selectedItem && (() => {
-          const expirationStatus = getItemExpirationStatus(selectedItem);
-          return (
-            <div className="text-center">
-              <div className={`text-6xl mb-4 ${expirationStatus.isExpired ? 'opacity-50 grayscale' : ''}`}>
-                {getItemIcon(selectedItem)}
-              </div>
-              <h3 className="text-white text-xl font-bold mb-1">
-                {selectedItem.subtype}
-              </h3>
-              <p className="text-purple-400 text-sm mb-1">{selectedItem.type}</p>
-              
-              {selectedItem.expires_at && (
-                <div className="mb-4">
-                  <p className={`text-xs mb-1 ${
-                    expirationStatus.isExpired 
-                      ? 'text-red-400' 
-                      : expirationStatus.expiresSoon 
-                        ? 'text-amber-400' 
-                        : 'text-purple-500'
-                  }`}>
-                    {expirationStatus.isExpired ? 'Status: Expired' : `Expires in: ${expirationStatus.timeRemaining}`}
-                  </p>
-                  {expirationStatus.expiresSoon && !expirationStatus.isExpired && (
-                    <p className="text-amber-400 text-xs">⚠️ Expiring soon!</p>
-                  )}
+        {selectedItem &&
+          (() => {
+            const expirationStatus = getItemExpirationStatus(selectedItem);
+            return (
+              <div className="text-center">
+                <div
+                  className={`text-6xl mb-4 ${expirationStatus.isExpired ? "opacity-50 grayscale" : ""}`}
+                >
+                  {getItemIcon(selectedItem)}
                 </div>
-              )}
-              
-              <GlassButton
-                variant="secondary"
-                onClick={() => setSelectedItem(null)}
-                className="w-full"
-              >
-                Close
-              </GlassButton>
-            </div>
-          );
-        })()}
+                <h3 className="text-white text-xl font-bold mb-1">
+                  {selectedItem.subtype}
+                </h3>
+                <p className="text-purple-400 text-sm mb-1">
+                  {selectedItem.type}
+                </p>
+
+                {selectedItem.expires_at && (
+                  <div className="mb-4">
+                    <p
+                      className={`text-xs mb-1 ${
+                        expirationStatus.isExpired
+                          ? "text-red-400"
+                          : expirationStatus.expiresSoon
+                            ? "text-amber-400"
+                            : "text-purple-500"
+                      }`}
+                    >
+                      {expirationStatus.isExpired
+                        ? "Status: Expired"
+                        : `Expires in: ${expirationStatus.timeRemaining}`}
+                    </p>
+                    {expirationStatus.expiresSoon &&
+                      !expirationStatus.isExpired && (
+                        <p className="text-amber-400 text-xs">
+                          ⚠️ Expiring soon!
+                        </p>
+                      )}
+                  </div>
+                )}
+
+                <GlassButton
+                  variant="secondary"
+                  onClick={() => setSelectedItem(null)}
+                  className="w-full"
+                >
+                  Close
+                </GlassButton>
+              </div>
+            );
+          })()}
       </GlassModal>
     </div>
   );

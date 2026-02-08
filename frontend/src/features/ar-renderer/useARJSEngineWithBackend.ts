@@ -245,6 +245,8 @@ export function useARJSEngineWithBackend(
   });
 
   const location = useLocation();
+  const locationRef = useRef(location.location);
+  locationRef.current = location.location;
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -597,13 +599,14 @@ export function useARJSEngineWithBackend(
 
         // Proximity polling
         proximityTimerRef.current = setInterval(() => {
-          if (!location.location || disposed) return;
+          const loc = locationRef.current;
+          if (!loc || disposed) return;
           let closest: ARGameObject | null = null;
           let closestDist = Infinity;
 
           for (const obj of objectsRef.current) {
             if (obj.collected) continue;
-            const d = calculateDistance(location.location, {
+            const d = calculateDistance(loc, {
               latitude: obj.position.lat,
               longitude: obj.position.lng,
               timestamp: Date.now(),
@@ -744,14 +747,15 @@ export function useARJSEngineWithBackend(
         };
         window.addEventListener("resize", handleResize);
 
+        const loc = locationRef.current;
         setState({
           ready: true,
           cameraActive,
           geoAvailable: true,
-          playerPosition: location.location
+          playerPosition: loc
             ? {
-                lat: location.location.latitude,
-                lng: location.location.longitude,
+                lat: loc.latitude,
+                lng: loc.longitude,
               }
             : null,
           objects: objectsRef.current,
@@ -825,7 +829,8 @@ export function useARJSEngineWithBackend(
       if (rendererRef.current) rendererRef.current.dispose();
       objectMeshesRef.current.clear();
     };
-  }, [canvasRef, videoRef, location.location, collectObject]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasRef, videoRef]);
 
   return { ...state, collectObject };
 }

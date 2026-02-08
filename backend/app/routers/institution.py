@@ -28,7 +28,7 @@ async def institution_login(credentials: Dict[str, str]):
     query = """
     SELECT id, name
     FROM institutions
-    WHERE name = :name AND password_hash = encode(sha256(:password::bytea), 'hex')
+    WHERE name = :name AND password_hash = encode(sha256(CAST(:password AS bytea)), 'hex')
     """
 
     result = await database.fetch_one(query, {"name": name, "password": password})

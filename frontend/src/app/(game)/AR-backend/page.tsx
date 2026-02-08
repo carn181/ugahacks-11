@@ -85,24 +85,37 @@ export default function ARPageWithBackend() {
 
   return (
     <div className="relative h-[calc(100vh-5rem)] overflow-hidden bg-black">
-      {/* Camera feed */}
+      {/* Gradient background — always mounted, fades out via CSS when camera is active */}
+      <div
+        className="absolute inset-0 bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900 z-0 transition-opacity duration-300"
+        style={{
+          opacity: cameraActive ? 0 : 1,
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
+      />
+
+      {/* Camera feed — always mounted, GPU-composited layer */}
       <video
         ref={videoRef}
         playsInline
         muted
         className="absolute inset-0 w-full h-full object-cover z-0"
+        style={{
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
       />
 
-      {/* Gradient background when camera is off */}
-      {!cameraActive && (
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900 z-0" />
-      )}
-
-      {/* Three.js canvas */}
+      {/* Three.js canvas — GPU-composited layer */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full z-[1]"
-        style={{ touchAction: "none" }}
+        style={{
+          touchAction: "none",
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
       />
 
       {/* Viewfinder */}

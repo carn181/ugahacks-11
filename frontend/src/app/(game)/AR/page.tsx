@@ -8,6 +8,13 @@ import { useARJSEngine } from "@/features/ar-renderer/useARJSEngine";
 import { getARCapability } from "@/utils/detectARCapability";
 import { RARITY_COLORS } from "@/types";
 import type { ARGameObject } from "@/types";
+import { wizardAPI } from "@/services/api";
+import type { Item } from "@/services/api";
+
+const DEFAULT_MAP_ID = "550e8400-e29b-41d4-a716-446655440011";
+const DEFAULT_LAT = 33.951;
+const DEFAULT_LNG = -83.3753;
+const AR_FETCH_RADIUS_M = 50;
 
 export default function ARPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -15,6 +22,50 @@ export default function ARPage() {
   const [arMode, setARMode] = useState<string | null>(null);
   const [showPickup, setShowPickup] = useState(false);
   const [lastPickedUp, setLastPickedUp] = useState<ARGameObject | null>(null);
+  const [mapItems, setMapItems] = useState<Item[]>([]);
+
+  // Fetch real items from backend
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        if (!navigator.geolocation) {
+          const items = await wizardAPI.getNearbyItems(
+            DEFAULT_MAP_ID,
+            { latitude: DEFAULT_LAT, longitude: DEFAULT_LNG },
+            AR_FETCH_RADIUS_M,
+          );
+          setMapItems(items);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const items = await wizardAPI.getNearbyItems(
+              DEFAULT_MAP_ID,
+              {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              },
+              AR_FETCH_RADIUS_M,
+            );
+            setMapItems(items);
+          },
+          async () => {
+            // GPS denied — fetch with default coords
+            const items = await wizardAPI.getNearbyItems(
+              DEFAULT_MAP_ID,
+              { latitude: DEFAULT_LAT, longitude: DEFAULT_LNG },
+              AR_FETCH_RADIUS_M,
+            );
+            setMapItems(items);
+          },
+          { enableHighAccuracy: true, timeout: 5000 },
+        );
+      } catch {
+        // backend unavailable — AR engine falls back to random objects
+      }
+    };
+    fetchItems();
+  }, []);
 
   const {
     ready,
@@ -28,7 +79,7 @@ export default function ARPage() {
     needsOrientationPermission,
     orientationGranted,
     requestOrientationPermission,
-  } = useARJSEngine(canvasRef, videoRef);
+  } = useARJSEngine(canvasRef, videoRef, mapItems);
 
   useEffect(() => {
     setARMode(getARCapability());
@@ -53,24 +104,37 @@ export default function ARPage() {
 
   return (
     <div className="relative h-[calc(100vh-5rem)] overflow-hidden bg-black">
-      {/* Camera feed */}
+      {/* Gradient background — always mounted, fades out via CSS when camera is active */}
+      <div
+        className="absolute inset-0 bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900 z-0 transition-opacity duration-300"
+        style={{
+          opacity: cameraActive ? 0 : 1,
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
+      />
+
+      {/* Camera feed — always mounted, GPU-composited layer */}
       <video
         ref={videoRef}
         playsInline
         muted
         className="absolute inset-0 w-full h-full object-cover z-0"
+        style={{
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
       />
 
-      {/* Gradient background when camera is off */}
-      {!cameraActive && (
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-900 z-0" />
-      )}
-
-      {/* Three.js canvas */}
+      {/* Three.js canvas — GPU-composited layer */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full z-[1]"
-        style={{ touchAction: "none" }}
+        style={{
+          touchAction: "none",
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
       />
 
       {/* Viewfinder */}

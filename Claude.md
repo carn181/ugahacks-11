@@ -1,28 +1,31 @@
-# Wizard AR Game: Institution & World-Builder Spec
+# Wizard AR Game: Master Stability & Infrastructure Spec
 
-## 1. Architectural Strategy
-- **Remote Infrastructure:** Frontend (Vercel), Backend (Railway Docker), Database (Supabase PostgreSQL).
-- **Security:** Institution passwords use `pgcrypto` Blowfish hashing. Validation happens strictly server-side via SQL RPC.
-- **Data Segregation:** - `Items` and `Markers` are map-bound.
-  - `Users` (Wizards) are consumers.
-  - `Institutions` are creators/owners.
+## 1. Critical Bug Fix: AR Black Flicker
+- **Root Cause:** React state updates (like location heartbeats or tab switching) trigger re-renders that reset the `MediaStream`.
+- **Solution:** - Use a **Persistent Layout Pattern**: Keep the `<video>` element in a high-level context or a global ref so it isn't unmounted.
+  - Apply `z-index` and `opacity` transitions instead of conditional rendering (`{isAR && <Camera />}`).
+  - CSS: Use `will-change: transform` and `backface-visibility: hidden` to keep the GPU layer active.
 
-## 2. Institution Feature Set (The "God-Mode" Tab)
-- **Map Sovereignty:** Institutions can toggle "Edit Mode."
-- **Point of Interest (POI) Markers:** Static markers for lore, help, or landmarks.
-- **Dynamic Item Drops:** Real-time placement of collectible items (Potions, Wands).
-- **Persistence:** Items placed by an institution are immediately visible to all Users and Guests on that map.
+## 2. Remote Infrastructure (Production Setup)
+- **Frontend:** Next.js (Vercel). All API calls point to the Railway URL.
+- **Backend:** Python FastAPI (Railway via Docker).
+- **Database:** PostgreSQL + PostGIS (Supabase Remote).
+- **Connectivity:** Use CORS middleware in Python to allow the Vercel domain.
 
-## 3. Technical Implementation
-- **Login Logic:** Uses a dedicated `verify_institution` SQL function.
-- **Creator UI:** Drag-and-drop or Click-to-place map interface.
-- **Backend API:** Python FastAPI endpoints for `create-element` and `delete-element`.
+## 3. Institution Logic (Full Implementation)
+- **Login:** SQL-based validation using `pgcrypto` and `verify_institution_login` RPC.
+- **Role Permissions:** - `Institution`: Full "Creator Mode" (Add/Delete items and markers).
+  - `User`: Standard collection and persistent inventory.
+  - `Guest`: Mock DB access via `guest_inventory` table.
+- **Creator UI:** Floating sidebar for selecting item types; click-to-place logic on Mapbox/Leaflet.
 
-## 4. Database Schema (Institutional Focus)
-- `users`: Includes `role` (enum: institution, user, guest).
-- `items`: Includes `created_by` (FK to users.id) to track which institution placed what.
-- `markers`: For non-collectible map decorations/labels.
+## 4. Secure Password & Database Logic
+- **Storage:** Passwords stored as `crypt(password, gen_salt('bf'))`.
+- **Validation:** `SELECT * FROM users WHERE username = %s AND password = crypt(%s, password)`.
+- **Location Sync:** Every 15s, `PATCH /api/users/location` updates the remote PostGIS column.
 
-## 5. Mock Credentials (Remote DB)
-- **Admin:** `UGA_Admin` / `Bulldog2026`
-- **Location:** Zell B Miller Learning Center (MLC), UGA (33.9572, -83.3753)
+## 5. Mock Data (Athens, GA / UGA MLC)
+- **Center Point:** 33.9572, -83.3753 (Zell B Miller Learning Center).
+- **Institution:** `UGA_Admin` / `Bulldog2026`.
+- **User:** `FireMage` / `Magic123`.
+- **Guest:** `Guest_Wizard` (Anonymous).

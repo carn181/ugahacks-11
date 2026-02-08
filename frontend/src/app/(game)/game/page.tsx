@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import GlassCard from "@/components/ui/GlassCard";
 import GlassButton from "@/components/ui/GlassButton";
@@ -13,12 +14,13 @@ export default function GameDashboard() {
   const router = useRouter();
 
   // Redirect to login if not authenticated
-  if (initialized && !isAuthenticated()) {
-    router.push("/login");
-    return null;
-  }
+  useEffect(() => {
+    if (initialized && !isAuthenticated()) {
+      router.push("/login");
+    }
+  }, [initialized, isAuthenticated, router]);
 
-  if (!user) return null;
+  if (!initialized || !user) return null;
 
   const player = {
     name: user.name,
@@ -29,7 +31,7 @@ export default function GameDashboard() {
   };
 
   return (
-  <div className="px-4 pt-6 pb-16 space-y-5">
+    <div className="px-4 pt-6 pb-16 space-y-5">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -94,7 +96,10 @@ export default function GameDashboard() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.1 }}
             >
-              <GlassCard className="!p-3 flex items-center gap-3" animate={false}>
+              <GlassCard
+                className="!p-3 flex items-center gap-3"
+                animate={false}
+              >
                 <div
                   className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg border ${RARITY_COLORS[creature.rarity]}`}
                   style={{ backgroundColor: "rgba(139, 92, 246, 0.2)" }}
