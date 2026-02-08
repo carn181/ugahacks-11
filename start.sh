@@ -23,7 +23,18 @@ cd "$BACKEND_DIR"
 if [ -f "requirements.txt" ]; then
   echo "Installing Python dependencies from requirements.txt..."
   # Use --no-cache-dir to reduce image size; ignore failures caused by already installed deps
-  pip install --no-cache-dir -r requirements.txt
+  # Try python -m pip, pip3, then pip; skip if none found
+  if command -v python >/dev/null 2>&1 && python -m pip --version >/dev/null 2>&1; then
+    python -m pip install --no-cache-dir -r requirements.txt || true
+  elif command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+    python3 -m pip install --no-cache-dir -r requirements.txt || true
+  elif command -v pip3 >/dev/null 2>&1; then
+    pip3 install --no-cache-dir -r requirements.txt || true
+  elif command -v pip >/dev/null 2>&1; then
+    pip install --no-cache-dir -r requirements.txt || true
+  else
+    echo "WARNING: No pip found; skipping dependency installation."
+  fi
 fi
 
 # Basic sanity check for DATABASE_URL (optional, but helpful)
