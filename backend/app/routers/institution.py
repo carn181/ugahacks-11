@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.database import database
 from app.schemas.schemas import Institution, ItemCreate, Profile
 
+router = APIRouter()
+
 
 @router.post("/institution/login", response_model=Institution)
 async def institution_login(credentials: Dict[str, str]):
@@ -233,6 +235,8 @@ async def delete_institution_item(institution_id: str, item_id: str):
         "DELETE FROM items WHERE id = :item_id", {"item_id": item_id}
     )
     # Delete the item
-    await database.execute("DELETE FROM items WHERE id = :item_id", {"item_id": item_id})
+    await database.execute(
+        "DELETE FROM items WHERE id = :item_id", {"item_id": item_id}
+    )
 
     return {"status": "deleted", "item_id": item_id}
