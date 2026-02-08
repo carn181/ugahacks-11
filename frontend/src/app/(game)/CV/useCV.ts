@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { initHandDetection } from "./script";
 import { defaultArsenal } from "./gameState";
-import witchHatUrl from "./cv_images/unitaa-wizard-7083732_1280.png";
+const DEFAULT_HAT_URL = "/cv_images/unitaa-wizard-7083732_1280.png";
 
 const MEDIAPIPE_SCRIPTS = [
   "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js",
@@ -50,7 +50,28 @@ function loadOpenCV(): Promise<void> {
   });
 }
 
-export function useCV() {
+type UseCVOptions = {
+  onSpellCast?: (playerId: 0 | 1, spell: { id: string; name: string }, meta?: { charged?: boolean; durationMs?: number; time?: number }) => void;
+  onPenalty?: (playerId: 0 | 1, reason: string) => void;
+  onPotionUse?: (playerId: 0 | 1) => void;
+  canUsePotion?: (playerId: 0 | 1) => boolean;
+  getPlayerArsenal?: () => Set<string>;
+  getActivePlayer?: () => 0 | 1 | null | -1;
+  hatImageUrl?: string;
+  mode?: "single" | "dual";
+};
+
+export function useCV(options: UseCVOptions = {}) {
+  const {
+    onSpellCast: onSpellCastOption,
+    onPenalty: onPenaltyOption,
+    onPotionUse,
+    canUsePotion,
+    getPlayerArsenal,
+    getActivePlayer,
+    hatImageUrl,
+    mode,
+  } = options;
   const [cameraReady, setCameraReady] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
   const [lastSpell, setLastSpell] = useState<{
@@ -70,21 +91,31 @@ export function useCV() {
   const playerArsenal = useRef(defaultArsenal());
 
 
-  const onSpellCast = useCallback((spell: { id: string; name: string }) => {
-    setLastSpell(spell);
-    setLastPenalty(null);
-    setTimeout(() => setLastSpell(null), 3000);
-  }, []);
+  const onSpellCast = useCallback(
+    (playerId: 0 | 1, spell: { id: string; name: string }, meta?: { charged?: boolean; durationMs?: number; time?: number }) => {
+      onSpellCastOption?.(playerId, spell, meta);
+      setLastSpell(spell);
+      setLastPenalty(null);
+      setTimeout(() => setLastSpell(null), 3000);
+    },
+    [onSpellCastOption],
+  );
 
-  const onPenalty = useCallback((reason: string) => {
-    setLastPenalty(
-      reason === "wrong_pattern"
-        ? "Wrong move pattern!"
-        : "Spell not in arsenal!",
-    );
-    setLastSpell(null);
-    setTimeout(() => setLastPenalty(null), 3000);
-  }, []);
+  const onPenalty = useCallback(
+    (playerId: 0 | 1, reason: string) => {
+      onPenaltyOption?.(playerId, reason);
+      setLastPenalty(
+        reason === "wrong_pattern"
+          ? "Wrong move pattern!"
+          : reason === "too_fast"
+            ? "Slow down"
+            : "Spell not in arsenal!",
+      );
+      setLastSpell(null);
+      setTimeout(() => setLastPenalty(null), 3000);
+    },
+    [onPenaltyOption],
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -124,11 +155,12 @@ export function useCV() {
         const api = initHandDetection(video, canvas, {
           onSpellCast,
           onPenalty,
-          getPlayerArsenal: () => playerArsenal.current,
-          hatImageUrl:
-            typeof witchHatUrl === "string"
-              ? witchHatUrl
-              : ((witchHatUrl as unknown as { src?: string }).src ?? ""),
+          onPotionUse,
+          canUsePotion,
+          getPlayerArsenal: getPlayerArsenal ?? (() => playerArsenal.current),
+          getActivePlayer,
+          hatImageUrl: hatImageUrl ?? DEFAULT_HAT_URL,
+          mode,
         });
         cleanupRef.current = api.cleanup;
         cvApiRef.current = api;
@@ -155,7 +187,7 @@ export function useCV() {
       cvApiRef.current = null;
       setCameraReady(false);
     };
-  }, [onSpellCast, onPenalty]);
+  }, [onSpellCast, onPenalty, onPotionUse, canUsePotion, getPlayerArsenal, getActivePlayer, hatImageUrl, mode]);
 
 
 

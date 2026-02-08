@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import GlassCard from "@/components/ui/GlassCard";
 import { initHandDetection } from "./script";
 import { defaultArsenal, SPELL_PATTERNS } from "./gameState";
-import witchHatUrl from "./cv_images/unitaa-wizard-7083732_1280.png";
+const DEFAULT_HAT_URL = "/cv_images/unitaa-wizard-7083732_1280.png";
 
 const MEDIAPIPE_SCRIPTS = [
   "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js",
@@ -230,10 +230,7 @@ export default function CVPage() {
           onPenalty: (reason: string) =>
             onPenalty(activePlayerRef.current, reason),
           getPlayerArsenal: () => playerArsenal.current,
-          hatImageUrl:
-            typeof witchHatUrl === "string"
-              ? witchHatUrl
-              : ((witchHatUrl as unknown as { src?: string }).src ?? ""),
+          hatImageUrl: DEFAULT_HAT_URL,
         });
         cleanupRef.current = api.cleanup;
         cvApiRef.current = api;
@@ -290,7 +287,6 @@ export default function CVPage() {
               width={640}
               height={480}
             />
-            <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-[#6a2cff] shadow-[0_0_12px_rgba(106,44,255,0.8)] pointer-events-none" />
           </div>
 
           <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-amber-400 rounded-tl-lg pointer-events-none" />
