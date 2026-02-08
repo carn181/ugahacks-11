@@ -1,23 +1,28 @@
-# Wizard AR Game Project: Claude.md
+# Wizard AR Game: Institution & World-Builder Spec
 
-## Project Context
-Location-based AR game. Next.js (FE), Python (BE), Supabase (DB).
+## 1. Architectural Strategy
+- **Remote Infrastructure:** Frontend (Vercel), Backend (Railway Docker), Database (Supabase PostgreSQL).
+- **Security:** Institution passwords use `pgcrypto` Blowfish hashing. Validation happens strictly server-side via SQL RPC.
+- **Data Segregation:** - `Items` and `Markers` are map-bound.
+  - `Users` (Wizards) are consumers.
+  - `Institutions` are creators/owners.
 
-## Current Objectives
-- **Route Fix:** Link "View Inventory" button to `?tab=items` on the dashboard.
-- **Data Integrity:** `FireMage` must be linked to map `d290f1ee-6c54-4b01-90e6-d701748f0851`.
-- **Item Generation:** The map must contain at least 5-10 items within 200m of the UGA MLC.
+## 2. Institution Feature Set (The "God-Mode" Tab)
+- **Map Sovereignty:** Institutions can toggle "Edit Mode."
+- **Point of Interest (POI) Markers:** Static markers for lore, help, or landmarks.
+- **Dynamic Item Drops:** Real-time placement of collectible items (Potions, Wands).
+- **Persistence:** Items placed by an institution are immediately visible to all Users and Guests on that map.
 
-## Tech Stack Requirements
-- **Frontend:** Handle `tab` query param in `/dashboard` to switch views.
-- **Backend:** Python logic must fetch items based on the user's `active_map_id`.
-- **DB:** Use PostGIS `GEOGRAPHY(POINT, 4326)` for the `location` column.
+## 3. Technical Implementation
+- **Login Logic:** Uses a dedicated `verify_institution` SQL function.
+- **Creator UI:** Drag-and-drop or Click-to-place map interface.
+- **Backend API:** Python FastAPI endpoints for `create-element` and `delete-element`.
 
-## Mock Data Info
-- **Tester:** `FireMage`
-- **UGA MLC Coordinates:** `33.9572, -83.3753`
-- **Items to Generate:** Mana Shards, Phoenix Feathers, Elder Wands.
+## 4. Database Schema (Institutional Focus)
+- `users`: Includes `role` (enum: institution, user, guest).
+- `items`: Includes `created_by` (FK to users.id) to track which institution placed what.
+- `markers`: For non-collectible map decorations/labels.
 
-## Deployment
-- **Frontend:** Vercel
-- **Backend/Docker:** Railway
+## 5. Mock Credentials (Remote DB)
+- **Admin:** `UGA_Admin` / `Bulldog2026`
+- **Location:** Zell B Miller Learning Center (MLC), UGA (33.9572, -83.3753)

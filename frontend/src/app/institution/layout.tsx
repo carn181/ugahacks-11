@@ -2,31 +2,30 @@
 
 import React, { ReactNode } from "react";
 import { useInstitution } from "@/services/institutionService";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function InstitutionLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const { isInstitutionAuthenticated } = useInstitution();
+  const { isAuthenticated, initialized } = useInstitution();
   const router = useRouter();
+  const pathname = usePathname();
 
-  // Check authentication for protected routes
   React.useEffect(() => {
-    if (isInstitutionAuthenticated() === false) {
+    if (!initialized) return;
+    if (!isAuthenticated && pathname !== "/institution/login") {
       router.push("/institution/login");
     }
-  }, [isInstitutionAuthenticated, router]);
+  }, [initialized, isAuthenticated, router, pathname]);
 
-  // Don't render while checking auth
-  if (isInstitutionAuthenticated() === false) {
+  // Wait for initialization before rendering protected routes
+  if (!initialized) return null;
+
+  if (!isAuthenticated && pathname !== "/institution/login") {
     return null;
   }
 
-  return (
-    <div className="min-h-screen">
-      {children}
-    </div>
-  );
+  return <div className="min-h-screen">{children}</div>;
 }

@@ -3,8 +3,8 @@
 
 -- Insert Test Institutions
 INSERT INTO institutions (id, name, password_hash) VALUES
-('550e8400-e29b-41d4-a716-446655440001', 'University of Magic', sha256('wizard123')),
-('550e8400-e29b-41d4-a716-446655440002', 'Arcane Academy', sha256('magic123'))
+('550e8400-e29b-41d4-a716-446655440001', 'University of Magic', encode(sha256('wizard123'::bytea), 'hex')),
+('550e8400-e29b-41d4-a716-446655440002', 'Arcane Academy', encode(sha256('magic123'::bytea), 'hex'))
 ON CONFLICT (id) DO NOTHING;
 
 -- Insert Test Maps
