@@ -48,9 +48,8 @@ export default function MapGrid({
           zoomControl: true,
         });
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        L.tileLayer("/map/tiles/blank.svg", {
           maxZoom: 19,
-          attribution: "&copy; OpenStreetMap contributors",
         }).addTo(map);
 
         mapInstanceRef.current = map;
