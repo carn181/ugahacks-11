@@ -5,14 +5,33 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import GlassButton from "@/components/ui/GlassButton";
 import GlassCard from "@/components/ui/GlassCard";
+import { useAuth } from "@/services/authService";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { loginAsUser, loginAsGuest, isLoading } = useAuth();
   const [wizardName, setWizardName] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = () => {
-    if (wizardName.trim()) {
+  const handleLogin = async () => {
+    if (!wizardName.trim()) return;
+    
+    try {
+      setError(null);
+      await loginAsUser(wizardName.trim());
       router.push("/game");
+    } catch (err) {
+      setError("Failed to login. Please try again.");
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      setError(null);
+      await loginAsGuest();
+      router.push("/game");
+    } catch (err) {
+      setError("Failed to login as guest. Please try again.");
     }
   };
 
@@ -39,6 +58,12 @@ export default function LoginPage() {
           Choose your wizard name to begin
         </p>
 
+        {error && (
+          <div className="text-red-400 text-sm bg-red-900/20 border border-red-500/30 rounded-lg p-3">
+            {error}
+          </div>
+        )}
+        
         <div className="space-y-4">
           <input
             type="text"
@@ -46,24 +71,33 @@ export default function LoginPage() {
             onChange={(e) => setWizardName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleLogin()}
             placeholder="Your Wizard Name..."
-            className="w-full px-4 py-3 rounded-xl bg-purple-800/50 backdrop-blur-xl border border-purple-500/20 text-white placeholder-purple-400 focus:outline-none focus:border-amber-400/50 focus:ring-1 focus:ring-amber-400/30 transition-all"
+            disabled={isLoading}
+            className="w-full px-4 py-3 rounded-xl bg-purple-800/50 backdrop-blur-xl border border-purple-500/20 text-white placeholder-purple-400 focus:outline-none focus:border-amber-400/50 focus:ring-1 focus:ring-amber-400/30 transition-all disabled:opacity-50"
           />
 
           <GlassButton
             variant="primary"
             onClick={handleLogin}
-            disabled={!wizardName.trim()}
+            disabled={!wizardName.trim() || isLoading}
             className="w-full"
           >
-            Enter the Quest
+            {isLoading ? "Entering Realm..." : "Enter Quest"}
           </GlassButton>
 
-          <button
-            onClick={() => router.push("/game")}
-            className="text-purple-400 text-sm hover:text-purple-300 transition-colors cursor-pointer"
+          <div className="flex items-center gap-3 py-2">
+            <div className="flex-1 h-px bg-purple-500/30"></div>
+            <span className="text-purple-400 text-sm">or</span>
+            <div className="flex-1 h-px bg-purple-500/30"></div>
+          </div>
+
+          <GlassButton
+            variant="ghost"
+            onClick={handleGuestLogin}
+            disabled={isLoading}
+            className="w-full"
           >
-            Skip for now →
-          </button>
+            {isLoading ? "Loading..." : "Continue as Guest"}
+          </GlassButton>
         </div>
       </GlassCard>
     </motion.div>

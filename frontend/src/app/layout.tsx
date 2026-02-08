@@ -3,6 +3,7 @@ import "./globals.css";
 import MagicParticles from "@/components/MagicParticles";
 import ArcaneClouds from "@/components/ArcaneClouds";
 import GoldDustParticles from "@/components/GoldDustParticles";
+import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
   title: "Wizard Quest",
@@ -17,12 +18,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-gradient-to-b from-purple-950 via-purple-900 to-indigo-950 antialiased">
-        <ArcaneClouds />
-        <GoldDustParticles count={50} />
-        <MagicParticles />
-  <div className="relative z-10 mx-auto max-w-[500px] min-h-screen">
-          {children}
-        </div>
+        <AuthProvider>
+          <ArcaneClouds />
+          <GoldDustParticles count={50} />
+          <MagicParticles />
+          <div className="relative z-10 mx-auto max-w-[500px] min-h-screen">
+            {children}
+          </div>
+        </AuthProvider>
       </body>
     </html>
   );

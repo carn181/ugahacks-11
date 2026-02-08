@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
+import UserStatusBar from "@/components/UserStatusBar";
 
 const navItems = [
   { href: "/game", label: "Home", icon: "🏠" },
@@ -23,6 +24,7 @@ export default function GameLayout({
 
   return (
     <div className="min-h-screen pb-20">
+      <UserStatusBar />
       <motion.main
         key={pathname}
         initial={{ opacity: 0, y: 10 }}

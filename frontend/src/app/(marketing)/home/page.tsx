@@ -7,8 +7,19 @@ import GlassCard from "@/components/ui/GlassCard";
 import MagicParticles from "@/components/MagicParticles";
 import ArcaneClouds from "@/components/ArcaneClouds";
 import GoldDustParticles from "@/components/GoldDustParticles";
+import { useAuth } from "@/services/authService";
 
 export default function HomePage() {
+  const { loginAsGuest, isLoading } = useAuth();
+
+  const handleGuestLogin = async () => {
+    try {
+      await loginAsGuest();
+      window.location.href = "/game";
+    } catch (err) {
+      console.error("Guest login failed:", err);
+    }
+  };
   return (
     <div className="relative min-h-screen">
       {/* Background visuals */}
@@ -97,11 +108,14 @@ export default function HomePage() {
             Begin Your Quest
           </GlassButton>
         </Link>
-        <Link href="/game" className="block">
-          <GlassButton variant="ghost" className="w-full">
-            Continue as Guest
-          </GlassButton>
-        </Link>
+        <GlassButton 
+          variant="ghost" 
+          className="w-full"
+          onClick={handleGuestLogin}
+          disabled={isLoading}
+        >
+          {isLoading ? "Loading..." : "Continue as Guest"}
+        </GlassButton>
       </motion.div>
     </div>
     </div>

@@ -5,14 +5,27 @@ import GlassCard from "@/components/ui/GlassCard";
 import GlassButton from "@/components/ui/GlassButton";
 import Link from "next/link";
 import { SAMPLE_CREATURES, RARITY_COLORS } from "@/types";
+import { useAuth } from "@/services/authService";
+import { useRouter } from "next/navigation";
 
 export default function GameDashboard() {
+  const { user, isAuthenticated, initialized } = useAuth();
+  const router = useRouter();
+
+  // Redirect to login if not authenticated
+  if (initialized && !isAuthenticated()) {
+    router.push("/login");
+    return null;
+  }
+
+  if (!user) return null;
+
   const player = {
-    name: "Apprentice",
-    level: 5,
-    xp: 340,
-    xpToNextLevel: 500,
-    creaturesCollected: 3,
+    name: user.name,
+    level: user.level,
+    xp: user.wins * 50 + user.gems, // Simple XP calculation
+    xpToNextLevel: user.level * 100,
+    creaturesCollected: user.gems / 10, // Estimate
   };
 
   return (
